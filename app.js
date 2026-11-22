@@ -1,280 +1,280 @@
 'use strict';
 
 // Der Rechenkern ist absichtlich ohne Bibliotheken und ohne Netzwerkzugriff.
-    function createEngine() {
-      function validate(p, allowIncomplete = false) {
-        const fail = text => { throw new Error(text); };
-        if (!p || ![2, 3].includes(p.version) || !Array.isArray(p.students) || !Array.isArray(p.seats) || !Array.isArray(p.neighbours) || !Array.isArray(p.rules)) fail('Ungültige Sitzplan-Datei.');
-        if (p.students.length > 60 || p.seats.length > 60 || (!allowIncomplete && (!p.students.length || p.seats.length < p.students.length))) fail('Es werden 1–60 Personen und mindestens genauso viele Tische benötigt.');
-        const students = new Set(p.students.map(s => s.id)), seats = new Set(p.seats.map(s => s.id));
-        if (students.size !== p.students.length || seats.size !== p.seats.length) fail('IDs müssen eindeutig sein.');
-        for (const s of p.students) {
-          if (!s || typeof s.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(s.id) || typeof s.name !== 'string' || !s.name.trim() || s.name.length > 80) fail('Ungültiger Name oder Personen-ID.');
-          if (!Array.isArray(s.yes) || !Array.isArray(s.no) || s.yes.length > 5 || s.no.length > 5) fail('Höchstens fünf Jas und fünf Neins pro Person.');
-          const wishes = [...s.yes, ...s.no.map(w => w.id)];
-          if (new Set(wishes).size !== wishes.length || wishes.some(id => !students.has(id) || id === s.id)) fail(s.name + ': doppelte, eigene oder unbekannte Wünsche.');
-          if (s.no.some(w => !w || typeof w !== 'object' || typeof w.absolute !== 'boolean')) fail('Ein Nein benötigt Person und Kennzeichnung „absolut“.');
-        }
-        for (const s of p.seats) {
-          if (!s || typeof s.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(s.id) || typeof s.label !== 'string' || !Number.isFinite(s.x) || !Number.isFinite(s.y) || s.x < 0 || s.x + (s.width || 100) > (p.room?.width || 1000) + .01 || s.y < 0 || s.y + (s.height || 64) > (p.room?.height || 780) + .01 || typeof s.back !== 'boolean' || !['down', 'left', 'right', 'up'].includes(s.direction)) fail('Ungültiger Tisch.');
-        }
-        const pairs = new Set();
-        for (const pair of p.neighbours) {
-          if (!Array.isArray(pair) || pair.length !== 2 || !pair.every(id => seats.has(id)) || pair[0] === pair[1]) fail('Ungültige Nachbarschaft.');
-          const key = JSON.stringify([...pair].sort());
-          if (pairs.has(key)) fail('Doppelte Nachbarschaft.');
-          pairs.add(key);
-        }
-        if (p.neighbours.length > 1770 || p.rules.length > 500) fail('Zu viele Verbindungen oder Regeln.');
-        const ruleIds = new Set();
-        for (const r of p.rules) {
-          if (typeof r.id !== 'string' || !r.id || ruleIds.has(r.id) || !['separate', 'not_back'].includes(r.kind) || !Array.isArray(r.students) || !r.students.length || new Set(r.students).size !== r.students.length || r.students.some(id => !students.has(id))) fail('Ungültige Gruppenregel.');
-          if (r.kind === 'separate' && r.students.length < 2) fail('Zum Trennen mindestens zwei Personen auswählen.');
-          ruleIds.add(r.id);
-        }
-        if (!p.assignment || typeof p.assignment !== 'object' || Array.isArray(p.assignment)) fail('Sitzverteilung fehlt.');
-        const entries = Object.entries(p.assignment);
-        if (entries.some(([a, b]) => !students.has(a) || !seats.has(b)) || new Set(entries.map(e => e[1])).size !== entries.length) fail('Ungültige oder doppelte Sitzverteilung.');
-        return p;
-      }
-      function prepare(p, allowIncomplete = false) {
-        validate(p, allowIncomplete);
-        const n = p.students.length, m = p.seats.length;
-        const si = new Map(p.students.map((s, i) => [s.id, i])), ti = new Map(p.seats.map((s, i) => [s.id, i]));
-        const near = Array.from({ length: m }, () => new Uint8Array(m));
-        for (const [a, b] of p.neighbours) near[ti.get(a)][ti.get(b)] = near[ti.get(b)][ti.get(a)] = 1;
-        const forbidden = Array.from({ length: n }, () => new Uint8Array(n));
-        const notBack = new Uint8Array(n);
-        for (const r of p.rules) {
-          const group = r.students.map(id => si.get(id));
-          if (r.kind === 'not_back') group.forEach(i => notBack[i] = 1);
-          else for (let a = 0; a < group.length; a++) for (let b = a + 1; b < group.length; b++) forbidden[group[a]][group[b]] = forbidden[group[b]][group[a]] = 1;
-        }
-        const yes = p.students.map(s => s.yes.map((id, i) => [si.get(id), 5 - i]));
-        const no = p.students.map((s, a) => s.no.map((w, i) => {
-          const b = si.get(w.id);
-          if (w.absolute) forbidden[a][b] = forbidden[b][a] = 1;
-          return [b, 5 - i, w.absolute];
-        }));
-        const hard = forbidden.map(row => Array.from(row.keys()).filter(i => row[i]));
-        const allowed = p.students.map((_, i) => p.seats.map((s, j) => j).filter(j => !notBack[i] || !p.seats[j].back));
-        const maxYes = yes.flat().reduce((sum, w) => sum + w[1], 0);
-        return { p, n, m, near, notBack, hard, allowed, yes, no, maxYes, noWeight: maxYes * (n + 1) + n + 1 };
-      }
-      function positions(c, assignment) { return c.p.students.map(s => c.p.seats.findIndex(t => t.id === assignment[s.id])); }
-      function assignment(c, pos) { return Object.fromEntries(c.p.students.map((s, i) => [s.id, c.p.seats[pos[i]].id])); }
-      function valid(c, pos, changed) {
-        for (const a of changed || Array.from({ length: c.n }, (_, i) => i)) {
-          if (pos[a] < 0 || pos[a] >= c.m || (c.notBack[a] && c.p.seats[pos[a]].back)) return false;
-          for (const b of c.hard[a]) if (pos[b] >= 0 && c.near[pos[a]][pos[b]]) return false;
-        }
-        return true;
-      }
-      function score(c, pos) {
-        let yes = 0, no = 0, coverage = 0, yesCount = 0, noCount = 0;
-        for (let a = 0; a < c.n; a++) {
-          let fulfilled = false;
-          if (pos[a] < 0) continue;
-          for (const [b, w] of c.yes[a]) if (pos[b] >= 0 && c.near[pos[a]][pos[b]]) { yes += w; yesCount++; fulfilled = true; }
-          for (const [b, w, absolute] of c.no[a]) if (!absolute && pos[b] >= 0 && c.near[pos[a]][pos[b]]) { no += w; noCount++; }
-          if (fulfilled) coverage++;
-        }
-        return { value: -no * c.noWeight + yes * (c.n + 1) + coverage, yes, no, coverage, yesCount, noCount };
-      }
-      function evaluate(p, map) {
-        const c = prepare(p, true), pos = positions(c, map), warnings = [], hardStudents = new Set(), softStudents = new Set();
-        const hardWarning = (text, ids) => { warnings.push(text); ids.forEach(id => hardStudents.add(id)); };
-        if (!p.students.length) warnings.push('Füge zuerst Personen hinzu.');
-        if (p.seats.length < p.students.length) warnings.push('Es fehlen Tische.');
-        if (pos.some(i => i < 0)) warnings.push('Nicht jede Person hat einen Platz.');
-        if (new Set(pos.filter(i => i >= 0)).size !== pos.filter(i => i >= 0).length) warnings.push('Ein Tisch ist doppelt belegt.');
-        for (const r of p.rules) {
-          const group = r.students.map(id => p.students.findIndex(s => s.id === id));
-          if (r.kind === 'not_back') {
-            for (const a of group) if (pos[a] >= 0 && p.seats[pos[a]].back) hardWarning(p.students[a].name + ': sitzt hinten.', [p.students[a].id]);
-          } else {
-            for (let a = 0; a < group.length; a++) for (let b = a + 1; b < group.length; b++) if (pos[group[a]] >= 0 && pos[group[b]] >= 0 && c.near[pos[group[a]]][pos[group[b]]]) hardWarning(p.students[group[a]].name + ' und ' + p.students[group[b]].name + ': Gruppenregel verletzt.', [p.students[group[a]].id, p.students[group[b]].id]);
-          }
-        }
-        const people = p.students.map((s, a) => {
-          const yes = [], no = [];
-          if (pos[a] >= 0) {
-            c.yes[a].forEach(([b, w], i) => { if (pos[b] >= 0 && c.near[pos[a]][pos[b]]) yes.push({ name: p.students[b].name, rank: i + 1 }); });
-            c.no[a].forEach(([b, w, absolute], i) => {
-              if (pos[b] >= 0 && c.near[pos[a]][pos[b]]) {
-                no.push({ name: p.students[b].name, rank: i + 1, absolute });
-                if (absolute) hardWarning(s.name + ': absolutes Nein zu ' + p.students[b].name + ' verletzt.', [s.id, p.students[b].id]);
-                else { softStudents.add(s.id); softStudents.add(p.students[b].id); }
-              }
-            });
-          }
-          return { id: s.id, name: s.name, yes, no };
-        });
-        hardStudents.forEach(id => softStudents.delete(id));
-        return { ...score(c, pos), noCount: people.reduce((sum, p) => sum + p.no.length, 0), maxYes: c.maxYes, valid: !warnings.length, warnings, people, hardStudents: [...hardStudents], softStudents: [...softStudents] };
-      }
-      function solve(p, milliseconds = 8000, emit = () => { }, seed = Date.now()) {
-        const c = prepare(p), start = performance.now(), end = start + milliseconds;
-        let randomState = seed >>> 0;
-        const random = () => { randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0; return randomState / 4294967296; };
-        const shuffle = list => { for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1));[list[i], list[j]] = [list[j], list[i]]; } return list; };
-        let best = null, bestScore = -Infinity, steps = 0, nodes = 0, expired = false;
-        const remember = pos => { const s = score(c, pos); if (s.value > bestScore) { best = pos.slice(); bestScore = s.value; return true; } return false; };
-        const current = positions(c, p.assignment);
-        if (current.every(i => i >= 0) && new Set(current).size === c.n && valid(c, current)) remember(current);
-        const finish = (status, message) => ({ status, message, assignment: best ? assignment(c, best) : null, report: best ? evaluate(p, assignment(c, best)) : null, steps, nodes });
-        if (c.allowed.some(list => !list.length)) return finish('INFEASIBLE', 'Für eine Person ist kein erlaubter Platz vorhanden.');
-        const notBackCount = Array.from(c.notBack).reduce((sum, v) => sum + v, 0), notBackSeats = p.seats.filter(t => !t.back).length;
-        if (notBackCount > notBackSeats) return finish('INFEASIBLE', notBackCount + ' Schüler dürfen nicht hinten sitzen, aber es gibt nur ' + notBackSeats + ' passende Plätze.');
-        // Eine Aufteilung der Tische in benachbarte Paare gibt eine sichere obere
-        // Grenze für die Zahl untereinander getrennter Plätze (je Paar höchstens einer).
-        for (const rule of p.rules.filter(r => r.kind === 'separate')) {
-          const available = new Set(rule.students.flatMap(id => c.allowed[p.students.findIndex(s => s.id === id)]));
-          let upperBound = 0;
-          while (available.size) { const a = available.values().next().value; available.delete(a); const b = [...available].find(b => c.near[a][b]); if (b !== undefined) available.delete(b); upperBound++; }
-          if (rule.students.length > upperBound) return finish('INFEASIBLE', 'Die Gruppe mit ' + rule.students.length + ' Schülern benötigt mehr getrennte Plätze, als der Raumplan zulässt (höchstens ' + upperBound + ').');
-        }
-        // Erst einen gültigen Plan finden: Variablen mit wenigen Möglichkeiten zuerst.
-        // Bei kleinen Klassen werden alle Möglichkeiten geprüft, sonst zeitlich begrenzt.
-        const exact = c.n <= 8;
-        const searchEnd = exact ? end : Math.min(end, start + Math.max(500, milliseconds * .30));
-        if (!best || exact) {
-          const pos = Array(c.n).fill(-1), used = new Uint8Array(c.m);
-          function visit(depth) {
-            if ((++nodes & 127) === 0 && performance.now() > searchEnd) { expired = true; return false; }
-            if (depth === c.n) { remember(pos); return !exact; }
-            let variable = -1, candidates = null;
-            for (let a = 0; a < c.n; a++) if (pos[a] < 0) {
-              const available = c.allowed[a].filter(t => !used[t] && !c.hard[a].some(b => pos[b] >= 0 && c.near[t][pos[b]]));
-              if (!available.length) return false;
-              if (candidates === null || available.length < candidates.length || (available.length === candidates.length && c.hard[a].length > c.hard[variable].length)) { variable = a; candidates = available; }
-            }
-            shuffle(candidates);
-            if (current[variable] >= 0 && candidates.includes(current[variable])) candidates = [current[variable], ...candidates.filter(t => t !== current[variable])];
-            for (const t of candidates) { pos[variable] = t; used[t] = 1; if (visit(depth + 1)) { used[t] = 0; pos[variable] = -1; return true; } used[t] = 0; pos[variable] = -1; if (expired) return false; }
-            return false;
-          }
-          visit(0);
-          if (exact && !expired) return best ? finish('OPTIMAL', 'Optimal für die eingetragenen Prioritäten.') : finish('INFEASIBLE', 'Diese Regeln und absoluten Neins sind nicht gleichzeitig erfüllbar.');
-          if (!best) return expired ? finish('UNKNOWN', 'Noch kein gültiger Plan gefunden. Länger suchen oder die Regeln prüfen.') : finish('INFEASIBLE', 'Diese Regeln und absoluten Neins sind nicht gleichzeitig erfüllbar.');
-        }
-        emit(finish('FEASIBLE', 'Gültiger Plan gefunden.'));
-        if (!c.yes.some(a => a.length) && !c.no.some(a => a.some(w => !w[2]))) return finish('FEASIBLE', 'Gültiger Plan; keine gewichteten Wünsche eingetragen.');
-        // Verbessernde und gelegentlich verschlechternde Tausche verhindern frühes Festlaufen.
-        // Es werden ausschließlich Pläne akzeptiert, die alle festen Regeln erfüllen.
-        let pos = best.slice(), value = bestScore, lastEmit = performance.now();
-        const occupied = new Set(pos), empty = Array.from({ length: c.m }, (_, i) => i).filter(i => !occupied.has(i));
-        while (performance.now() < end) {
-          const a = Math.floor(random() * c.n), b = Math.floor(random() * c.n);
-          if (a === b) continue;
-          const oldA = pos[a], oldB = pos[b];
-          let changed = [a, b], third = -1, oldThird = -1, emptyIndex = -1;
-          if (empty.length && random() < .12) { emptyIndex = Math.floor(random() * empty.length); pos[a] = empty[emptyIndex]; changed = [a]; }
-          else if (c.n > 2 && random() < .22) { third = Math.floor(random() * c.n); if (third === a || third === b) continue; oldThird = pos[third]; pos[a] = oldB; pos[b] = oldThird; pos[third] = oldA; changed.push(third); }
-          else { pos[a] = oldB; pos[b] = oldA; }
-          steps++;
-          let accept = false;
-          if (valid(c, pos, changed)) {
-            const next = score(c, pos).value, delta = next - value;
-            const progress = (performance.now() - start) / Math.max(1, milliseconds), cycle = (progress * 7) % 1;
-            const temperature = Math.max(.12, Math.pow(1 - cycle, 3) * Math.max(c.n + 1, c.noWeight * .18));
-            accept = delta >= 0 || random() < Math.exp(delta / temperature);
-            if (accept) { value = next; remember(pos); }
-          }
-          if (accept) { if (emptyIndex >= 0) empty[emptyIndex] = oldA; }
-          else { pos[a] = oldA; pos[b] = oldB; if (third >= 0) pos[third] = oldThird; }
-          const now = performance.now();
-          if (now - lastEmit > 350) { emit(finish('FEASIBLE', 'Suche läuft …')); lastEmit = now; }
-          if (steps % 6000 === 0) { pos = best.slice(); value = bestScore; const taken = new Set(pos); empty.splice(0, empty.length, ...Array.from({ length: c.m }, (_, i) => i).filter(i => !taken.has(i))); }
-        }
-        const answer = finish('FEASIBLE', 'Bester gefundener gültiger Plan; kein Optimalitätsbeweis.');
-        if (answer.assignment && !answer.report.valid) throw new Error('Die unabhängige Prüfung hat einen ungültigen Plan entdeckt.');
-        return answer;
-      }
-      return { validate, prepare, evaluate, solve };
+function createEngine() {
+  function validate(p, allowIncomplete = false) {
+    const fail = text => { throw new Error(text); };
+    if (!p || ![2, 3].includes(p.version) || !Array.isArray(p.students) || !Array.isArray(p.seats) || !Array.isArray(p.neighbours) || !Array.isArray(p.rules)) fail('Ungültige Sitzplan-Datei.');
+    if (p.students.length > 60 || p.seats.length > 60 || (!allowIncomplete && (!p.students.length || p.seats.length < p.students.length))) fail('Es werden 1–60 Personen und mindestens genauso viele Tische benötigt.');
+    const students = new Set(p.students.map(s => s.id)), seats = new Set(p.seats.map(s => s.id));
+    if (students.size !== p.students.length || seats.size !== p.seats.length) fail('IDs müssen eindeutig sein.');
+    for (const s of p.students) {
+      if (!s || typeof s.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(s.id) || typeof s.name !== 'string' || !s.name.trim() || s.name.length > 80) fail('Ungültiger Name oder Personen-ID.');
+      if (!Array.isArray(s.yes) || !Array.isArray(s.no) || s.yes.length > 5 || s.no.length > 5) fail('Höchstens fünf Jas und fünf Neins pro Person.');
+      const wishes = [...s.yes, ...s.no.map(w => w.id)];
+      if (new Set(wishes).size !== wishes.length || wishes.some(id => !students.has(id) || id === s.id)) fail(s.name + ': doppelte, eigene oder unbekannte Wünsche.');
+      if (s.no.some(w => !w || typeof w !== 'object' || typeof w.absolute !== 'boolean')) fail('Ein Nein benötigt Person und Kennzeichnung „absolut“.');
     }
+    for (const s of p.seats) {
+      if (!s || typeof s.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(s.id) || typeof s.label !== 'string' || !Number.isFinite(s.x) || !Number.isFinite(s.y) || s.x < 0 || s.x + (s.width || 100) > (p.room?.width || 1000) + .01 || s.y < 0 || s.y + (s.height || 64) > (p.room?.height || 780) + .01 || typeof s.back !== 'boolean' || !['down', 'left', 'right', 'up'].includes(s.direction)) fail('Ungültiger Tisch.');
+    }
+    const pairs = new Set();
+    for (const pair of p.neighbours) {
+      if (!Array.isArray(pair) || pair.length !== 2 || !pair.every(id => seats.has(id)) || pair[0] === pair[1]) fail('Ungültige Nachbarschaft.');
+      const key = JSON.stringify([...pair].sort());
+      if (pairs.has(key)) fail('Doppelte Nachbarschaft.');
+      pairs.add(key);
+    }
+    if (p.neighbours.length > 1770 || p.rules.length > 500) fail('Zu viele Verbindungen oder Regeln.');
+    const ruleIds = new Set();
+    for (const r of p.rules) {
+      if (typeof r.id !== 'string' || !r.id || ruleIds.has(r.id) || !['separate', 'not_back'].includes(r.kind) || !Array.isArray(r.students) || !r.students.length || new Set(r.students).size !== r.students.length || r.students.some(id => !students.has(id))) fail('Ungültige Gruppenregel.');
+      if (r.kind === 'separate' && r.students.length < 2) fail('Zum Trennen mindestens zwei Personen auswählen.');
+      ruleIds.add(r.id);
+    }
+    if (!p.assignment || typeof p.assignment !== 'object' || Array.isArray(p.assignment)) fail('Sitzverteilung fehlt.');
+    const entries = Object.entries(p.assignment);
+    if (entries.some(([a, b]) => !students.has(a) || !seats.has(b)) || new Set(entries.map(e => e[1])).size !== entries.length) fail('Ungültige oder doppelte Sitzverteilung.');
+    return p;
+  }
+  function prepare(p, allowIncomplete = false) {
+    validate(p, allowIncomplete);
+    const n = p.students.length, m = p.seats.length;
+    const si = new Map(p.students.map((s, i) => [s.id, i])), ti = new Map(p.seats.map((s, i) => [s.id, i]));
+    const near = Array.from({ length: m }, () => new Uint8Array(m));
+    for (const [a, b] of p.neighbours) near[ti.get(a)][ti.get(b)] = near[ti.get(b)][ti.get(a)] = 1;
+    const forbidden = Array.from({ length: n }, () => new Uint8Array(n));
+    const notBack = new Uint8Array(n);
+    for (const r of p.rules) {
+      const group = r.students.map(id => si.get(id));
+      if (r.kind === 'not_back') group.forEach(i => notBack[i] = 1);
+      else for (let a = 0; a < group.length; a++) for (let b = a + 1; b < group.length; b++) forbidden[group[a]][group[b]] = forbidden[group[b]][group[a]] = 1;
+    }
+    const yes = p.students.map(s => s.yes.map((id, i) => [si.get(id), 5 - i]));
+    const no = p.students.map((s, a) => s.no.map((w, i) => {
+      const b = si.get(w.id);
+      if (w.absolute) forbidden[a][b] = forbidden[b][a] = 1;
+      return [b, 5 - i, w.absolute];
+    }));
+    const hard = forbidden.map(row => Array.from(row.keys()).filter(i => row[i]));
+    const allowed = p.students.map((_, i) => p.seats.map((s, j) => j).filter(j => !notBack[i] || !p.seats[j].back));
+    const maxYes = yes.flat().reduce((sum, w) => sum + w[1], 0);
+    return { p, n, m, near, notBack, hard, allowed, yes, no, maxYes, noWeight: maxYes * (n + 1) + n + 1 };
+  }
+  function positions(c, assignment) { return c.p.students.map(s => c.p.seats.findIndex(t => t.id === assignment[s.id])); }
+  function assignment(c, pos) { return Object.fromEntries(c.p.students.map((s, i) => [s.id, c.p.seats[pos[i]].id])); }
+  function valid(c, pos, changed) {
+    for (const a of changed || Array.from({ length: c.n }, (_, i) => i)) {
+      if (pos[a] < 0 || pos[a] >= c.m || (c.notBack[a] && c.p.seats[pos[a]].back)) return false;
+      for (const b of c.hard[a]) if (pos[b] >= 0 && c.near[pos[a]][pos[b]]) return false;
+    }
+    return true;
+  }
+  function score(c, pos) {
+    let yes = 0, no = 0, coverage = 0, yesCount = 0, noCount = 0;
+    for (let a = 0; a < c.n; a++) {
+      let fulfilled = false;
+      if (pos[a] < 0) continue;
+      for (const [b, w] of c.yes[a]) if (pos[b] >= 0 && c.near[pos[a]][pos[b]]) { yes += w; yesCount++; fulfilled = true; }
+      for (const [b, w, absolute] of c.no[a]) if (!absolute && pos[b] >= 0 && c.near[pos[a]][pos[b]]) { no += w; noCount++; }
+      if (fulfilled) coverage++;
+    }
+    return { value: -no * c.noWeight + yes * (c.n + 1) + coverage, yes, no, coverage, yesCount, noCount };
+  }
+  function evaluate(p, map) {
+    const c = prepare(p, true), pos = positions(c, map), warnings = [], hardStudents = new Set(), softStudents = new Set();
+    const hardWarning = (text, ids) => { warnings.push(text); ids.forEach(id => hardStudents.add(id)); };
+    if (!p.students.length) warnings.push('Füge zuerst Personen hinzu.');
+    if (p.seats.length < p.students.length) warnings.push('Es fehlen Tische.');
+    if (pos.some(i => i < 0)) warnings.push('Nicht jede Person hat einen Platz.');
+    if (new Set(pos.filter(i => i >= 0)).size !== pos.filter(i => i >= 0).length) warnings.push('Ein Tisch ist doppelt belegt.');
+    for (const r of p.rules) {
+      const group = r.students.map(id => p.students.findIndex(s => s.id === id));
+      if (r.kind === 'not_back') {
+        for (const a of group) if (pos[a] >= 0 && p.seats[pos[a]].back) hardWarning(p.students[a].name + ': sitzt hinten.', [p.students[a].id]);
+      } else {
+        for (let a = 0; a < group.length; a++) for (let b = a + 1; b < group.length; b++) if (pos[group[a]] >= 0 && pos[group[b]] >= 0 && c.near[pos[group[a]]][pos[group[b]]]) hardWarning(p.students[group[a]].name + ' und ' + p.students[group[b]].name + ': Gruppenregel verletzt.', [p.students[group[a]].id, p.students[group[b]].id]);
+      }
+    }
+    const people = p.students.map((s, a) => {
+      const yes = [], no = [];
+      if (pos[a] >= 0) {
+        c.yes[a].forEach(([b, w], i) => { if (pos[b] >= 0 && c.near[pos[a]][pos[b]]) yes.push({ name: p.students[b].name, rank: i + 1 }); });
+        c.no[a].forEach(([b, w, absolute], i) => {
+          if (pos[b] >= 0 && c.near[pos[a]][pos[b]]) {
+            no.push({ name: p.students[b].name, rank: i + 1, absolute });
+            if (absolute) hardWarning(s.name + ': absolutes Nein zu ' + p.students[b].name + ' verletzt.', [s.id, p.students[b].id]);
+            else { softStudents.add(s.id); softStudents.add(p.students[b].id); }
+          }
+        });
+      }
+      return { id: s.id, name: s.name, yes, no };
+    });
+    hardStudents.forEach(id => softStudents.delete(id));
+    return { ...score(c, pos), noCount: people.reduce((sum, p) => sum + p.no.length, 0), maxYes: c.maxYes, valid: !warnings.length, warnings, people, hardStudents: [...hardStudents], softStudents: [...softStudents] };
+  }
+  function solve(p, milliseconds = 8000, emit = () => { }, seed = Date.now()) {
+    const c = prepare(p), start = performance.now(), end = start + milliseconds;
+    let randomState = seed >>> 0;
+    const random = () => { randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0; return randomState / 4294967296; };
+    const shuffle = list => { for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1));[list[i], list[j]] = [list[j], list[i]]; } return list; };
+    let best = null, bestScore = -Infinity, steps = 0, nodes = 0, expired = false;
+    const remember = pos => { const s = score(c, pos); if (s.value > bestScore) { best = pos.slice(); bestScore = s.value; return true; } return false; };
+    const current = positions(c, p.assignment);
+    if (current.every(i => i >= 0) && new Set(current).size === c.n && valid(c, current)) remember(current);
+    const finish = (status, message) => ({ status, message, assignment: best ? assignment(c, best) : null, report: best ? evaluate(p, assignment(c, best)) : null, steps, nodes });
+    if (c.allowed.some(list => !list.length)) return finish('INFEASIBLE', 'Für eine Person ist kein erlaubter Platz vorhanden.');
+    const notBackCount = Array.from(c.notBack).reduce((sum, v) => sum + v, 0), notBackSeats = p.seats.filter(t => !t.back).length;
+    if (notBackCount > notBackSeats) return finish('INFEASIBLE', notBackCount + ' Schüler dürfen nicht hinten sitzen, aber es gibt nur ' + notBackSeats + ' passende Plätze.');
+    // Eine Aufteilung der Tische in benachbarte Paare gibt eine sichere obere
+    // Grenze für die Zahl untereinander getrennter Plätze (je Paar höchstens einer).
+    for (const rule of p.rules.filter(r => r.kind === 'separate')) {
+      const available = new Set(rule.students.flatMap(id => c.allowed[p.students.findIndex(s => s.id === id)]));
+      let upperBound = 0;
+      while (available.size) { const a = available.values().next().value; available.delete(a); const b = [...available].find(b => c.near[a][b]); if (b !== undefined) available.delete(b); upperBound++; }
+      if (rule.students.length > upperBound) return finish('INFEASIBLE', 'Die Gruppe mit ' + rule.students.length + ' Schülern benötigt mehr getrennte Plätze, als der Raumplan zulässt (höchstens ' + upperBound + ').');
+    }
+    // Erst einen gültigen Plan finden: Variablen mit wenigen Möglichkeiten zuerst.
+    // Bei kleinen Klassen werden alle Möglichkeiten geprüft, sonst zeitlich begrenzt.
+    const exact = c.n <= 8;
+    const searchEnd = exact ? end : Math.min(end, start + Math.max(500, milliseconds * .30));
+    if (!best || exact) {
+      const pos = Array(c.n).fill(-1), used = new Uint8Array(c.m);
+      function visit(depth) {
+        if ((++nodes & 127) === 0 && performance.now() > searchEnd) { expired = true; return false; }
+        if (depth === c.n) { remember(pos); return !exact; }
+        let variable = -1, candidates = null;
+        for (let a = 0; a < c.n; a++) if (pos[a] < 0) {
+          const available = c.allowed[a].filter(t => !used[t] && !c.hard[a].some(b => pos[b] >= 0 && c.near[t][pos[b]]));
+          if (!available.length) return false;
+          if (candidates === null || available.length < candidates.length || (available.length === candidates.length && c.hard[a].length > c.hard[variable].length)) { variable = a; candidates = available; }
+        }
+        shuffle(candidates);
+        if (current[variable] >= 0 && candidates.includes(current[variable])) candidates = [current[variable], ...candidates.filter(t => t !== current[variable])];
+        for (const t of candidates) { pos[variable] = t; used[t] = 1; if (visit(depth + 1)) { used[t] = 0; pos[variable] = -1; return true; } used[t] = 0; pos[variable] = -1; if (expired) return false; }
+        return false;
+      }
+      visit(0);
+      if (exact && !expired) return best ? finish('OPTIMAL', 'Optimal für die eingetragenen Prioritäten.') : finish('INFEASIBLE', 'Diese Regeln und absoluten Neins sind nicht gleichzeitig erfüllbar.');
+      if (!best) return expired ? finish('UNKNOWN', 'Noch kein gültiger Plan gefunden. Länger suchen oder die Regeln prüfen.') : finish('INFEASIBLE', 'Diese Regeln und absoluten Neins sind nicht gleichzeitig erfüllbar.');
+    }
+    emit(finish('FEASIBLE', 'Gültiger Plan gefunden.'));
+    if (!c.yes.some(a => a.length) && !c.no.some(a => a.some(w => !w[2]))) return finish('FEASIBLE', 'Gültiger Plan; keine gewichteten Wünsche eingetragen.');
+    // Verbessernde und gelegentlich verschlechternde Tausche verhindern frühes Festlaufen.
+    // Es werden ausschließlich Pläne akzeptiert, die alle festen Regeln erfüllen.
+    let pos = best.slice(), value = bestScore, lastEmit = performance.now();
+    const occupied = new Set(pos), empty = Array.from({ length: c.m }, (_, i) => i).filter(i => !occupied.has(i));
+    while (performance.now() < end) {
+      const a = Math.floor(random() * c.n), b = Math.floor(random() * c.n);
+      if (a === b) continue;
+      const oldA = pos[a], oldB = pos[b];
+      let changed = [a, b], third = -1, oldThird = -1, emptyIndex = -1;
+      if (empty.length && random() < .12) { emptyIndex = Math.floor(random() * empty.length); pos[a] = empty[emptyIndex]; changed = [a]; }
+      else if (c.n > 2 && random() < .22) { third = Math.floor(random() * c.n); if (third === a || third === b) continue; oldThird = pos[third]; pos[a] = oldB; pos[b] = oldThird; pos[third] = oldA; changed.push(third); }
+      else { pos[a] = oldB; pos[b] = oldA; }
+      steps++;
+      let accept = false;
+      if (valid(c, pos, changed)) {
+        const next = score(c, pos).value, delta = next - value;
+        const progress = (performance.now() - start) / Math.max(1, milliseconds), cycle = (progress * 7) % 1;
+        const temperature = Math.max(.12, Math.pow(1 - cycle, 3) * Math.max(c.n + 1, c.noWeight * .18));
+        accept = delta >= 0 || random() < Math.exp(delta / temperature);
+        if (accept) { value = next; remember(pos); }
+      }
+      if (accept) { if (emptyIndex >= 0) empty[emptyIndex] = oldA; }
+      else { pos[a] = oldA; pos[b] = oldB; if (third >= 0) pos[third] = oldThird; }
+      const now = performance.now();
+      if (now - lastEmit > 350) { emit(finish('FEASIBLE', 'Suche läuft …')); lastEmit = now; }
+      if (steps % 6000 === 0) { pos = best.slice(); value = bestScore; const taken = new Set(pos); empty.splice(0, empty.length, ...Array.from({ length: c.m }, (_, i) => i).filter(i => !taken.has(i))); }
+    }
+    const answer = finish('FEASIBLE', 'Bester gefundener gültiger Plan; kein Optimalitätsbeweis.');
+    if (answer.assignment && !answer.report.valid) throw new Error('Die unabhängige Prüfung hat einen ungültigen Plan entdeckt.');
+    return answer;
+  }
+  return { validate, prepare, evaluate, solve };
+}
 const Engine = createEngine();
 
 // Zeilenweiser Wunschzettel-Import. Validiert vollständig, bevor Daten geändert werden.
-    
+
 const Ballots = (() => {
-      class ImportError extends Error {
-        constructor(details) { super('Import abgebrochen. Es wurden keine Wünsche geändert.'); this.details = details; }
+  class ImportError extends Error {
+    constructor(details) { super('Import abgebrochen. Es wurden keine Wünsche geändert.'); this.details = details; }
+  }
+  function decodeBase64(code) {
+    if (!code || !/^[A-Za-z0-9+/]*={0,2}$/.test(code) || code.length % 4 !== 0) throw new Error('Ungültiges Base64.');
+    const binary = atob(code);
+    if (btoa(binary) !== code) throw new Error('Ungültiges Base64.');
+    return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(binary, c => c.charCodeAt(0)));
+  }
+  function strictJSON(text) {
+    let data;
+    try { data = JSON.parse(text); } catch (_) { throw new Error('Ungültiges JSON. Pro Zeile muss ein vollständiger Zettel stehen.'); }
+    // JSON.parse allein erkennt doppelte Feldnamen nicht; auch diese werden abgewiesen.
+    const keys = new Set(); let depth = 0;
+    for (let i = 0; i < text.length;) {
+      const ch = text[i];
+      if (ch === '"') {
+        const start = i++;
+        while (i < text.length) { if (text[i] === '\\') { i += 2; continue; } if (text[i++] === '"') break; }
+        if (depth === 1 && /^\s*:/.test(text.slice(i))) { const key = JSON.parse(text.slice(start, i)); if (keys.has(key)) throw new Error('Doppeltes JSON-Feld „' + key + '“.'); keys.add(key); }
+      } else { if (ch === '{' || ch === '[') depth++; if (ch === '}' || ch === ']') depth--; i++; }
+    }
+    return data;
+  }
+  function validate(data, ids, round) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Ein JSON-Objekt wird erwartet.');
+    const fields = ['v', 'round', 'student', 'yes', 'no'], keys = Object.keys(data);
+    if (keys.length !== fields.length || keys.some(key => !fields.includes(key))) throw new Error('Erlaubte Felder: v, round, student, yes, no.');
+    if (data.v !== 1) throw new Error('Unbekannte Zettelversion; erwartet wird v: 1.');
+    if (data.round !== round) throw new Error('Falsche Abfragerunde; erwartet wird ' + round + '.');
+    if (typeof data.student !== 'string' || !ids.has(data.student)) throw new Error('Unbekannte Schüler-ID „' + String(data.student) + '“.');
+    const seen = new Set(), wishes = { student: data.student, yes: [], no: [] };
+    for (const kind of ['yes', 'no']) {
+      const entries = data[kind];
+      if (!Array.isArray(entries) || entries.length !== 5) throw new Error(data.student + ': ' + kind + ' muss genau fünf Ränge enthalten (leer = "-").');
+      let empty = false;
+      for (let i = 0; i < entries.length; i++) {
+        const value = entries[i];
+        if (typeof value !== 'string') throw new Error(data.student + ': ' + kind + ' Rang ' + (i + 1) + ' muss eine ID oder "-" enthalten.');
+        if (value === '-') { empty = true; continue; }
+        if (empty) throw new Error(data.student + ': leere Ränge dürfen nur am Ende stehen.');
+        const absolute = kind === 'no' && value.endsWith('!'), id = absolute ? value.slice(0, -1) : value;
+        if (!ids.has(id)) throw new Error(data.student + ': unbekannte oder ungültige Wunsch-ID „' + value + '“.');
+        if (id === data.student) throw new Error(data.student + ': ein eigener Sitzwunsch ist nicht erlaubt.');
+        if (seen.has(id)) throw new Error(data.student + ': ' + id + ' kommt mehrfach oder bei Ja und Nein vor.');
+        seen.add(id);
+        if (kind === 'yes') wishes.yes.push(id); else wishes.no.push({ id, absolute });
       }
-      function decodeBase64(code) {
-        if (!code || !/^[A-Za-z0-9+/]*={0,2}$/.test(code) || code.length % 4 !== 0) throw new Error('Ungültiges Base64.');
-        const binary = atob(code);
-        if (btoa(binary) !== code) throw new Error('Ungültiges Base64.');
-        return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(binary, c => c.charCodeAt(0)));
-      }
-      function strictJSON(text) {
-        let data;
-        try { data = JSON.parse(text); } catch (_) { throw new Error('Ungültiges JSON. Pro Zeile muss ein vollständiger Zettel stehen.'); }
-        // JSON.parse allein erkennt doppelte Feldnamen nicht; auch diese werden abgewiesen.
-        const keys = new Set(); let depth = 0;
-        for (let i = 0; i < text.length;) {
-          const ch = text[i];
-          if (ch === '"') {
-            const start = i++;
-            while (i < text.length) { if (text[i] === '\\') { i += 2; continue; } if (text[i++] === '"') break; }
-            if (depth === 1 && /^\s*:/.test(text.slice(i))) { const key = JSON.parse(text.slice(start, i)); if (keys.has(key)) throw new Error('Doppeltes JSON-Feld „' + key + '“.'); keys.add(key); }
-          } else { if (ch === '{' || ch === '[') depth++; if (ch === '}' || ch === ']') depth--; i++; }
-        }
-        return data;
-      }
-      function validate(data, ids, round) {
-        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Ein JSON-Objekt wird erwartet.');
-        const fields = ['v', 'round', 'student', 'yes', 'no'], keys = Object.keys(data);
-        if (keys.length !== fields.length || keys.some(key => !fields.includes(key))) throw new Error('Erlaubte Felder: v, round, student, yes, no.');
-        if (data.v !== 1) throw new Error('Unbekannte Zettelversion; erwartet wird v: 1.');
-        if (data.round !== round) throw new Error('Falsche Abfragerunde; erwartet wird ' + round + '.');
-        if (typeof data.student !== 'string' || !ids.has(data.student)) throw new Error('Unbekannte Schüler-ID „' + String(data.student) + '“.');
-        const seen = new Set(), wishes = { student: data.student, yes: [], no: [] };
-        for (const kind of ['yes', 'no']) {
-          const entries = data[kind];
-          if (!Array.isArray(entries) || entries.length !== 5) throw new Error(data.student + ': ' + kind + ' muss genau fünf Ränge enthalten (leer = "-").');
-          let empty = false;
-          for (let i = 0; i < entries.length; i++) {
-            const value = entries[i];
-            if (typeof value !== 'string') throw new Error(data.student + ': ' + kind + ' Rang ' + (i + 1) + ' muss eine ID oder "-" enthalten.');
-            if (value === '-') { empty = true; continue; }
-            if (empty) throw new Error(data.student + ': leere Ränge dürfen nur am Ende stehen.');
-            const absolute = kind === 'no' && value.endsWith('!'), id = absolute ? value.slice(0, -1) : value;
-            if (!ids.has(id)) throw new Error(data.student + ': unbekannte oder ungültige Wunsch-ID „' + value + '“.');
-            if (id === data.student) throw new Error(data.student + ': ein eigener Sitzwunsch ist nicht erlaubt.');
-            if (seen.has(id)) throw new Error(data.student + ': ' + id + ' kommt mehrfach oder bei Ja und Nein vor.');
-            seen.add(id);
-            if (kind === 'yes') wishes.yes.push(id); else wishes.no.push({ id, absolute });
-          }
-        }
-        return wishes;
-      }
-      function parse(text, students, round = 'KLASSE29-R1') {
-        if (typeof text !== 'string' || text.length > 1000000) throw new ImportError(['Die Datei darf höchstens 1 MB Text enthalten.']);
-        text = text.trim();
-        if (text.startsWith('SITZLISTE1:')) { try { text = decodeBase64(text.slice(11)); } catch (error) { throw new ImportError(['Sammelblock: ' + error.message]); } }
-        const ids = new Set(students.map(s => s.id)), lines = text.split(/\r\n|\n|\r/), records = [], errors = [], firstLine = new Map();
-        lines.forEach((raw, index) => {
-          const line = raw.trim(), number = index + 1; if (!line) return;
-          try {
-            if (line.length > 8192) throw new Error('Zettel ist zu lang.');
-            const json = line.startsWith('SITZ1:') ? decodeBase64(line.slice(6)) : line;
-            const record = validate(strictJSON(json), ids, round);
-            if (firstLine.has(record.student)) throw new Error(record.student + ' wurde bereits in Zeile ' + firstLine.get(record.student) + ' abgegeben.');
-            firstLine.set(record.student, number); records.push({ ...record, line: number });
-          } catch (error) { errors.push('Zeile ' + number + ': ' + error.message); }
-        });
-        if (!records.length && !errors.length) errors.push('Die Datei enthält keine Wunschzettel.');
-        if (errors.length) throw new ImportError(errors);
-        return records;
-      }
-      function merge(project, records) {
-        const next = JSON.parse(JSON.stringify(project)), byId = new Map(records.map(r => [r.student, r]));
-        for (const student of next.students) { const r = byId.get(student.id); if (r) { student.yes = [...r.yes]; student.no = r.no.map(w => ({ ...w })); } }
-        return next;
-      }
-      return { parse, merge };
-    })();
+    }
+    return wishes;
+  }
+  function parse(text, students, round = 'KLASSE29-R1') {
+    if (typeof text !== 'string' || text.length > 1000000) throw new ImportError(['Die Datei darf höchstens 1 MB Text enthalten.']);
+    text = text.trim();
+    if (text.startsWith('SITZLISTE1:')) { try { text = decodeBase64(text.slice(11)); } catch (error) { throw new ImportError(['Sammelblock: ' + error.message]); } }
+    const ids = new Set(students.map(s => s.id)), lines = text.split(/\r\n|\n|\r/), records = [], errors = [], firstLine = new Map();
+    lines.forEach((raw, index) => {
+      const line = raw.trim(), number = index + 1; if (!line) return;
+      try {
+        if (line.length > 8192) throw new Error('Zettel ist zu lang.');
+        const json = line.startsWith('SITZ1:') ? decodeBase64(line.slice(6)) : line;
+        const record = validate(strictJSON(json), ids, round);
+        if (firstLine.has(record.student)) throw new Error(record.student + ' wurde bereits in Zeile ' + firstLine.get(record.student) + ' abgegeben.');
+        firstLine.set(record.student, number); records.push({ ...record, line: number });
+      } catch (error) { errors.push('Zeile ' + number + ': ' + error.message); }
+    });
+    if (!records.length && !errors.length) errors.push('Die Datei enthält keine Wunschzettel.');
+    if (errors.length) throw new ImportError(errors);
+    return records;
+  }
+  function merge(project, records) {
+    const next = JSON.parse(JSON.stringify(project)), byId = new Map(records.map(r => [r.student, r]));
+    for (const student of next.students) { const r = byId.get(student.id); if (r) { student.yes = [...r.yes]; student.no = r.no.map(w => ({ ...w })); } }
+    return next;
+  }
+  return { parse, merge };
+})();
 
 
 // Eine Projektdatei enthält den gesamten bearbeitbaren Zustand; kein Server ist nötig.
@@ -413,7 +413,7 @@ class ProjectWriter {
       const item = this.pending; this.pending = null; this.onState('writing', item.revision);
       let stream;
       try { stream = await this.handle.createWritable(); await stream.write(item.text); await stream.close(); this.onState('saved', item.revision); }
-      catch (error) { try { await stream?.abort(); } catch {} if (!this.pending) this.pending = item; this.failed = true; this.onState('error', item.revision, error); }
+      catch (error) { try { await stream?.abort(); } catch { } if (!this.pending) this.pending = item; this.failed = true; this.onState('error', item.revision, error); }
     }
     this.running = false; this.onState('idle'); this.waiters.splice(0).forEach(done => done());
   }
@@ -428,7 +428,7 @@ class ProjectWriter {
   let project = null, view = 'plan', mode = 'people', selected = null, selectedStudent = null, linkStart = null;
   let history = [], future = [], revision = 0, savedRevision = 0, fileHandle = null, autosave = false, fileName = '', saveTimer, noticeTimer, busy = false, worker = null, roomDialogMode = 'new', solverMessage = '';
   let idFloor = { student: 0, seat: 0 }, cache = null;
-  try { cache = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch {}
+  try { cache = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch { }
   const writer = new ProjectWriter((state, rev, error) => {
     if (state === 'saved') { savedRevision = rev; cacheProject(); }
     if (state === 'error') { autosave = false; notice('Die Datei konnte nicht gespeichert werden. Dein Browserentwurf bleibt erhalten. Bitte erneut speichern oder eine Kopie herunterladen.\n' + error.message, true, 12000); }

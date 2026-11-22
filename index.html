@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="de">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,46 +9,86 @@
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
+
 <body>
   <header class="topbar">
     <a class="brand" href="#" id="home">Sitzplan<span class="brand-dot"></span></a>
-    <div id="project-heading" hidden><strong id="project-name"></strong><span id="save-status" role="status"></span></div>
-    <div class="header-actions"><button id="new-project">Neu</button><button id="open-project">Projekt öffnen</button><button id="save-project" class="primary" hidden>Projekt speichern</button><button id="save-copy" hidden>Kopie speichern</button></div>
+    <div id="project-heading" hidden><strong id="project-name"></strong><span id="save-status" role="status"></span>
+    </div>
+    <div class="header-actions"><button id="new-project">Neu</button><button id="open-project">Projekt
+        öffnen</button><button id="save-project" class="primary" hidden>Projekt speichern</button><button id="save-copy"
+        hidden>Kopie speichern</button></div>
   </header>
   <main>
     <section id="welcome" class="welcome">
       <div class="welcome-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <h1>Deine Klasse. Dein Sitzplan.</h1>
-      <p>Erstelle einen Raum oder öffne deine Projektdatei.<br>Raum, Namen, Wünsche und Regeln bleiben zusammen in einer Datei.</p>
-      <div class="welcome-actions"><button id="start-new" class="primary">Neuen Sitzplan erstellen</button><button id="start-open">Projekt öffnen</button></div>
+      <p>Erstelle einen Raum oder öffne deine Projektdatei.<br>Raum, Namen, Wünsche und Regeln bleiben zusammen in einer
+        Datei.</p>
+      <div class="welcome-actions"><button id="start-new" class="primary">Neuen Sitzplan erstellen</button><button
+          id="start-open">Projekt öffnen</button></div>
       <button id="recover" class="text-button" hidden>Letzten Browserentwurf wiederherstellen</button>
       <p class="privacy">Ohne Konto und Datenbank. Deine Klassendaten bleiben in diesem Browser.</p>
     </section>
     <section id="workspace" hidden>
-      <nav class="tabs" aria-label="Ansicht"><button data-view="plan" class="active">Sitzplan</button><button data-view="students">Schüler &amp; Wünsche</button><button data-view="rules">Regeln</button></nav>
+      <nav class="tabs" aria-label="Ansicht"><button data-view="plan" class="active">Sitzplan</button><button
+          data-view="students">Schüler &amp; Wünsche</button><button data-view="rules">Regeln</button></nav>
       <section id="view-plan">
         <div class="plan-toolbar">
-          <div class="segmented" aria-label="Bearbeitung"><button data-mode="people" class="active">Personen</button><button data-mode="layout">Raum &amp; Tische</button><button data-mode="links">Nachbarschaften</button></div>
-          <div class="toolbar-right"><button id="undo" title="Letzte Änderung rückgängig machen">Rückgängig</button><button id="redo">Wiederholen</button><button id="calculate" class="primary">Berechnen</button><button id="stop" hidden>Stoppen</button></div>
+          <div class="segmented" aria-label="Bearbeitung"><button data-mode="people"
+              class="active">Personen</button><button data-mode="layout">Raum &amp; Tische</button><button
+              data-mode="links">Nachbarschaften</button></div>
+          <div class="toolbar-right"><button id="undo"
+              title="Letzte Änderung rückgängig machen">Rückgängig</button><button id="redo">Wiederholen</button><button
+              id="calculate" class="primary">Berechnen</button><button id="stop" hidden>Stoppen</button></div>
         </div>
         <div id="layout-tools" class="tools" hidden>
-          <label>Tische <input id="table-count" type="number" min="1" max="60" value="1"></label><button id="add-tables">Hinzufügen</button><button id="desk-tool">Pult</button><button id="board-tool">Tafel</button><button id="room-tool">Raum einstellen</button><span class="tool-spacer"></span><button id="remember-layout">Als Standard merken</button><button id="reset-layout">Standard wiederherstellen</button>
+          <label>Tische <input id="table-count" type="number" min="1" max="60" value="1"></label><button
+            id="add-tables">Hinzufügen</button><button id="desk-tool">Pult</button><button
+            id="board-tool">Tafel</button><button id="room-tool">Raum einstellen</button><span
+            class="tool-spacer"></span><button id="remember-layout">Als Standard merken</button><button
+            id="reset-layout">Standard wiederherstellen</button>
         </div>
-        <div id="link-tools" class="tools" hidden><span id="link-hint">Zwei Tische anklicken, um eine Verbindung umzuschalten.</span><button id="detect-links">Nachbarn erkennen</button><span class="muted">Über Eck und diagonal zählen ebenfalls. Gegenüber nicht.</span></div>
+        <div id="link-tools" class="tools" hidden><span id="link-hint">Zwei Tische anklicken, um eine Verbindung
+            umzuschalten.</span><button id="detect-links">Nachbarn erkennen</button><span class="muted">Über Eck und
+            diagonal zählen ebenfalls. Gegenüber nicht.</span></div>
         <div class="editor-grid" id="editor-grid">
-          <div class="room-scroll"><div id="room" class="room" aria-label="Sitzplan"><svg id="connections" aria-hidden="true"></svg><div id="objects"></div><div id="empty-room" class="empty-room">Dein Raum ist noch leer.<br><button id="empty-add" class="text-button">Tische hinzufügen</button></div></div></div>
+          <div class="room-scroll">
+            <div id="room" class="room" aria-label="Sitzplan"><svg id="connections" aria-hidden="true"></svg>
+              <div id="objects"></div>
+              <div id="empty-room" class="empty-room">Dein Raum ist noch leer.<br><button id="empty-add"
+                  class="text-button">Tische hinzufügen</button></div>
+            </div>
+          </div>
           <aside id="inspector" class="inspector" hidden></aside>
         </div>
-        <div class="plan-bottom"><span id="plan-count"></span><div class="legend"><span><i class="red"></i>Feste Regel verletzt</span><span><i class="orange"></i>Nein-Wunsch</span></div><button id="print-plan" class="text-button">Drucken</button></div>
+        <div class="plan-bottom"><span id="plan-count"></span>
+          <div class="legend"><span><i class="red"></i>Feste Regel verletzt</span><span><i
+                class="orange"></i>Nein-Wunsch</span></div><button id="print-plan" class="text-button">Drucken</button>
+        </div>
         <div id="report" class="report" role="status"></div>
       </section>
       <section id="view-students" hidden>
-        <div class="section-bar"><button id="add-students" class="primary">Namen hinzufügen</button><button id="import-wishes">Wunschzettel importieren</button><button id="student-prompt">Schülerprompt kopieren</button><span id="student-count" class="muted"></span></div>
-        <p class="hint">Rang 1 hat die höchste Priorität. Wünsche und importierte Zettel werden in deiner Projektdatei gespeichert.</p>
-        <div class="students-grid"><div id="student-list" class="student-list" aria-label="Schüler"></div><div id="student-editor" class="student-editor"></div></div>
+        <div class="section-bar"><button id="add-students" class="primary">Namen hinzufügen</button><button
+            id="import-wishes">Wunschzettel importieren</button><button id="student-prompt">Schülerprompt
+            kopieren</button><span id="student-count" class="muted"></span></div>
+        <p class="hint">Rang 1 hat die höchste Priorität. Wünsche und importierte Zettel werden in deiner Projektdatei
+          gespeichert.</p>
+        <div class="students-grid">
+          <div id="student-list" class="student-list" aria-label="Schüler"></div>
+          <div id="student-editor" class="student-editor"></div>
+        </div>
       </section>
       <section id="view-rules" hidden>
-        <form id="rule-form" class="rule-builder"><label>Regel <select id="rule-kind"><option value="separate">Dürfen nicht nebeneinander sitzen</option><option value="not_back">Dürfen nicht hinten sitzen</option></select></label><p class="hint">Bei einer Trennregel gilt das für jedes Paar in der Gruppe – auch über Eck und diagonal. Hintere Plätze markierst du im Raumeditor.</p><div id="rule-students" class="check-grid"></div><button class="primary" type="submit">Regel hinzufügen</button></form>
+        <form id="rule-form" class="rule-builder"><label>Regel <select id="rule-kind">
+              <option value="separate">Dürfen nicht nebeneinander sitzen</option>
+              <option value="not_back">Dürfen nicht hinten sitzen</option>
+            </select></label>
+          <p class="hint">Bei einer Trennregel gilt das für jedes Paar in der Gruppe – auch über Eck und diagonal.
+            Hintere Plätze markierst du im Raumeditor.</p>
+          <div id="rule-students" class="check-grid"></div><button class="primary" type="submit">Regel
+            hinzufügen</button>
+        </form>
         <div id="rule-list" class="rule-list"></div>
       </section>
     </section>
@@ -55,7 +96,29 @@
   <div id="notice" class="notice" role="status" hidden></div>
   <input id="project-input" type="file" accept=".json,.txt,.html,application/json,text/plain,text/html" hidden>
   <input id="wishes-input" type="file" accept=".txt,.json,text/plain,application/json" hidden>
-  <dialog id="room-dialog"><form id="room-form"><h2 id="room-dialog-title">Neuer Sitzplan</h2><label>Projektname<input id="room-name" maxlength="80" required value="Meine Klasse"></label><div class="two-columns"><label>Raumbreite<input id="room-width" type="number" min="600" max="2400" value="1000" required></label><label>Raumhöhe<input id="room-height" type="number" min="400" max="2000" value="780" required></label></div><p class="hint">Die Maße sind freie Planeinheiten. Tische, Pult und Tafel kannst du danach platzieren.</p><label id="round-label" hidden>Wunschzettel-Runde<input id="room-round" maxlength="80" pattern="[A-Za-z0-9_-]+"></label><div class="dialog-actions"><button type="button" data-close="room-dialog">Abbrechen</button><button class="primary" type="submit">Übernehmen</button></div></form></dialog>
-  <dialog id="names-dialog"><form id="names-form"><h2>Namen hinzufügen</h2><label>Ein Name pro Zeile<textarea id="names-text" rows="9" placeholder="Adrian&#10;Rafael&#10;Paul" required></textarea></label><p class="hint">Jede Person bekommt eine feste ID. Diese bleibt auch beim Umbenennen erhalten.</p><div class="dialog-actions"><button type="button" data-close="names-dialog">Abbrechen</button><button class="primary" type="submit">Hinzufügen</button></div></form></dialog>
+  <dialog id="room-dialog">
+    <form id="room-form">
+      <h2 id="room-dialog-title">Neuer Sitzplan</h2><label>Projektname<input id="room-name" maxlength="80" required
+          value="Meine Klasse"></label>
+      <div class="two-columns"><label>Raumbreite<input id="room-width" type="number" min="600" max="2400" value="1000"
+            required></label><label>Raumhöhe<input id="room-height" type="number" min="400" max="2000" value="780"
+            required></label></div>
+      <p class="hint">Die Maße sind freie Planeinheiten. Tische, Pult und Tafel kannst du danach platzieren.</p><label
+        id="round-label" hidden>Wunschzettel-Runde<input id="room-round" maxlength="80"
+          pattern="[A-Za-z0-9_-]+"></label>
+      <div class="dialog-actions"><button type="button" data-close="room-dialog">Abbrechen</button><button
+          class="primary" type="submit">Übernehmen</button></div>
+    </form>
+  </dialog>
+  <dialog id="names-dialog">
+    <form id="names-form">
+      <h2>Namen hinzufügen</h2><label>Ein Name pro Zeile<textarea id="names-text" rows="9"
+          placeholder="Adrian&#10;Rafael&#10;Paul" required></textarea></label>
+      <p class="hint">Jede Person bekommt eine feste ID. Diese bleibt auch beim Umbenennen erhalten.</p>
+      <div class="dialog-actions"><button type="button" data-close="names-dialog">Abbrechen</button><button
+          class="primary" type="submit">Hinzufügen</button></div>
+    </form>
+  </dialog>
 </body>
+
 </html>
