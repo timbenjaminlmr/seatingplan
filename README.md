@@ -15,6 +15,7 @@ Alle Angaben bleiben zusammen in einer Projektdatei – vom ersten Raumlayout bi
 - **Wunschzettel-Import:** Abgaben über Personen-IDs aus einer TXT-Datei übernehmen. Die importierten Wünsche werden anschließend Teil der Projektdatei.
 - **Konfliktanzeige:** Feste Regelverletzungen erscheinen rot, Nein-Konflikte orange.
 - **Projektverwaltung:** Pläne speichern, wieder öffnen, als Kopie exportieren, Änderungen rückgängig machen und eine gespeicherte Standardanordnung wiederherstellen.
+- **Tische ausrichten:** Die vorhandene Anordnung begradigen oder ausgewählte Tische als Reihe, Spalte oder Raster mit gleichem Abstand anordnen.
 - **Druckansicht:** Den aktuellen Sitzplan aus dem Browser drucken.
 
 ## Einen Sitzplan erstellen
@@ -23,7 +24,7 @@ Alle Angaben bleiben zusammen in einer Projektdatei – vom ersten Raumlayout bi
 2. Unter **Raum & Tische** den Raum einrichten und Tische, Pult und Tafel platzieren.
 3. Unter **Schüler & Wünsche** Namen hinzufügen und Wünsche eintragen oder importieren.
 4. Nachbarschaften prüfen und bei Bedarf unter **Regeln** feste Vorgaben ergänzen.
-5. **Berechnen** wählen, das Ergebnis prüfen und die Projektdatei speichern.
+5. **Berechnen** wählen, das Ergebnis prüfen und die Projektdatei exportieren.
 
 Personen lassen sich anschließend auch manuell zuweisen oder durch Anklicken zweier Tische tauschen.
 
@@ -37,11 +38,13 @@ Eine JSON-Projektdatei enthält den gesamten Plan:
 - Nachbarschaften, Wünsche und Regeln
 - Sitzverteilung und gespeicherte Standardanordnung
 
-In unterstützten Browsern kann **Projekt speichern** nach einer Schreibfreigabe dieselbe Datei automatisch aktualisieren. Nach dem erneuten Öffnen wird die Schreibfreigabe über diesen Button wieder aktiviert.
+Mit **Projekt exportieren** wird eine vollständige JSON-Datei vorbereitet. **JSON herunterladen** speichert einen neuen Stand, ohne Schreibzugriff auf eine bestehende Datei anzufordern. Der Exportdialog zeigt Dateiname, Datenumfang und den vollständigen JSON-Inhalt.
 
-In anderen Browsern wird die aktuelle Projektdatei heruntergeladen. Nach weiteren Änderungen muss sie erneut gespeichert werden. **Kopie speichern** erstellt eine zusätzliche Download-Datei.
+Über **Gespeicherte Datei prüfen** lässt sich die heruntergeladene Datei erneut auswählen. Die App prüft, ob sie lesbar ist und genau den vorbereiteten Stand enthält. Eine leere oder abweichende Datei wird abgewiesen; das geöffnete Projekt bleibt dabei erhalten.
 
-Ein Browserentwurf wird zusätzlich lokal gespeichert und kann beim nächsten Besuch wiederhergestellt werden. Für das Weiterarbeiten auf einem anderen Gerät oder als Sicherung sollte die Projektdatei aufbewahrt werden.
+Falls ein eingebetteter Vorschau-Browser den Download blockiert, kann derselbe vollständige Inhalt über **JSON kopieren** oder **JSON anzeigen** übernommen und als `.json` gespeichert werden. Die App meldet einen angeforderten Download erst nach erfolgreicher Dateiprüfung als gesichert.
+
+Ein Browserentwurf wird zusätzlich lokal gesichert und kann beim nächsten Besuch wiederhergestellt werden. Eine aufbewahrte Projektdatei ist die Sicherung für andere Geräte und Browser.
 
 ## Lokal starten
 

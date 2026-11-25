@@ -421,33 +421,83 @@ const Model = (() => {
     for (const item of p.seats) if (chosen.has(item.id)) item.direction = directions[(directions.indexOf(item.direction) + 1) % 4];
     geometryChanged(p);
   }
+  function arrangeSeats(p, ids, kind = 'auto', gap = 20, columns = 3) {
+    const chosen = new Set(ids), items = p.seats.filter(t => chosen.has(t.id));
+    if (items.length < 2) throw new Error('Wähle mindestens zwei Tische zum Ausrichten.');
+    if (!['auto', 'row', 'column', 'grid'].includes(kind) || !Number.isFinite(gap) || gap < 0 || gap > 200) throw new Error('Ungültige Ausrichtung oder Abstand.');
+    const median = values => { const a = [...values].sort((a, b) => a - b); return a[Math.floor(a.length / 2)]; };
+    function clusters(axis, tolerance) {
+      const groups = [];
+      for (const item of [...items].sort((a, b) => a[axis] - b[axis] || a.id.localeCompare(b.id))) {
+        const last = groups.at(-1);
+        if (last && Math.abs(item[axis] - median(last.map(t => t[axis]))) <= tolerance) last.push(item);
+        else groups.push([item]);
+      }
+      return new Map(groups.flatMap((group, index) => group.map(t => [t.id, index])));
+    }
+    let cells;
+    if (kind === 'auto') {
+      const xs = clusters('x', Math.min(40, median(items.map(t => t.width)) * .3));
+      const ys = clusters('y', Math.min(30, median(items.map(t => t.height)) * .35));
+      cells = items.map(item => ({ item, col: xs.get(item.id), row: ys.get(item.id) }));
+      if (new Set(cells.map(c => c.col + ':' + c.row)).size !== cells.length) throw new Error('Einige Tische liegen zu dicht übereinander. Wähle „Gleichmäßiges Raster“ oder richte einzelne Reihen aus.');
+    } else {
+      const rowOrder = kind === 'grid' ? clusters('y', Math.min(30, median(items.map(t => t.height)) * .35)) : null;
+      const ordered = [...items].sort((a, b) => (kind === 'column' ? a.y - b.y : kind === 'grid' ? rowOrder.get(a.id) - rowOrder.get(b.id) || a.x - b.x : a.x - b.x) || a.id.localeCompare(b.id));
+      const count = kind === 'row' ? items.length : kind === 'column' ? 1 : columns;
+      if (!Number.isInteger(count) || count < 1 || count > items.length) throw new Error('Bitte eine gültige Spaltenzahl eingeben.');
+      cells = ordered.map((item, i) => ({ item, col: i % count, row: Math.floor(i / count) }));
+    }
+    const widths = Array.from({ length: Math.max(...cells.map(c => c.col)) + 1 }, (_, i) => Math.max(...cells.filter(c => c.col === i).map(c => c.item.width)));
+    const heights = Array.from({ length: Math.max(...cells.map(c => c.row)) + 1 }, (_, i) => Math.max(...cells.filter(c => c.row === i).map(c => c.item.height)));
+    const width = widths.reduce((a, b) => a + b, 0) + gap * (widths.length - 1), height = heights.reduce((a, b) => a + b, 0) + gap * (heights.length - 1);
+    if (width > p.room.width || height > p.room.height) throw new Error('Diese Anordnung passt nicht in den Raum. Wähle weniger Tische, einen kleineren Abstand oder ein Raster mit anderer Spaltenzahl.');
+    const left = Math.min(...items.map(t => t.x)), right = Math.max(...items.map(t => t.x + t.width));
+    const top = Math.min(...items.map(t => t.y)), bottom = Math.max(...items.map(t => t.y + t.height));
+    const startX = Math.max(0, Math.min(p.room.width - width, Math.round((left + right - width) / 2)));
+    const startY = Math.max(0, Math.min(p.room.height - height, Math.round((top + bottom - height) / 2)));
+    const coordinates = (sizes, start) => { let offset = start; return sizes.map(size => { const value = offset; offset += size + gap; return value; }); };
+    const xs = coordinates(widths, startX), ys = coordinates(heights, startY);
+    const proposed = cells.map(c => ({ ...c.item, x: xs[c.col], y: ys[c.row] }));
+    const others = [...p.seats.filter(t => !chosen.has(t.id)), ...[p.room.desk, p.room.board].filter(t => t.enabled)];
+    const overlaps = (a, b) => a.x < b.x + b.width - .01 && a.x + a.width > b.x + .01 && a.y < b.y + b.height - .01 && a.y + a.height > b.y + .01;
+    if (proposed.some(a => others.some(b => overlaps(a, b)))) throw new Error('Die ausgerichteten Tische würden andere Tische, Pult oder Tafel überdecken. Schaffe etwas Platz oder ändere die Auswahl.');
+    // Erst nach allen Prüfungen übernehmen. IDs, Personen und Wünsche bleiben erhalten.
+    for (const next of proposed) { const item = p.seats.find(t => t.id === next.id); item.x = next.x; item.y = next.y; }
+    geometryChanged(p);
+  }
   function resize(p, width, height) {
     if (!Number.isFinite(width) || !Number.isFinite(height)) throw new Error('Bitte gültige Raummaße eingeben.');
     const sx = width / p.room.width, sy = height / p.room.height;
     for (const s of [...p.seats, p.room.desk, p.room.board]) { s.x = Math.max(0, Math.min(width - (s.width || 100), s.x * sx)); s.y = Math.max(0, Math.min(height - (s.height || 64), s.y * sy)); }
     p.room.width = width; p.room.height = height; p.room = ProjectFile.room(p.room); geometryChanged(p); remember(p);
   }
-  return { remember, detectNeighbours, geometryChanged, addStudents, removeStudent, addSeats, removeSeat, assign, updateSeats, clampMove, moveSeats, rotateSeats, resize };
+  return { remember, detectNeighbours, geometryChanged, addStudents, removeStudent, addSeats, removeSeat, assign, updateSeats, clampMove, moveSeats, rotateSeats, arrangeSeats, resize };
 })();
 
-// Schreibvorgänge bleiben in Reihenfolge; schnelle Änderungen werden zusammengefasst.
-class ProjectWriter {
-  constructor(onState) { this.onState = onState; this.handle = null; this.pending = null; this.running = false; this.failed = false; this.waiters = []; }
-  connect(handle) { if (this.running) throw new Error('Die Datei wird noch gespeichert.'); this.handle = handle; this.failed = false; }
-  request(text, revision) { this.pending = { text, revision }; this.failed = false; this.drain(); }
-  async drain() {
-    if (this.running || !this.handle || !this.pending || this.failed) return;
-    this.running = true;
-    while (this.pending && !this.failed) {
-      const item = this.pending; this.pending = null; this.onState('writing', item.revision);
-      let stream;
-      try { stream = await this.handle.createWritable(); await stream.write(item.text); await stream.close(); this.onState('saved', item.revision); }
-      catch (error) { try { await stream?.abort(); } catch { } if (!this.pending) this.pending = item; this.failed = true; this.onState('error', item.revision, error); }
-    }
-    this.running = false; this.onState('idle'); this.waiters.splice(0).forEach(done => done());
+// Exportdaten sind ein unveränderlicher Schnappschuss. Der Download enthält die JSON-Daten direkt.
+const ProjectExport = (() => {
+  const canonical = value => JSON.stringify(value, function (key, current) {
+    return current && typeof current === 'object' && !Array.isArray(current)
+      ? Object.fromEntries(Object.keys(current).sort().map(name => [name, current[name]])) : current;
+  });
+  function prepare(project) {
+    const text = ProjectFile.serialize(project) + '\n';
+    const data = JSON.parse(text), size = new TextEncoder().encode(text).byteLength;
+    if (!size || size > 2 * 1024 * 1024) throw new Error('Der Export ist leer oder größer als 2 MB und kann nicht sicher wieder geöffnet werden.');
+    const base = data.name.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') || 'Sitzplan';
+    return Object.freeze({ text, size, filename: base + '.json', url: 'data:application/json;charset=utf-8,' + encodeURIComponent(text), people: data.students.length, tables: data.seats.length, rules: data.rules.length });
   }
-  async flush() { await this.drain(); if (this.running) await new Promise(resolve => this.waiters.push(resolve)); }
-}
+  function verify(text, expected) {
+    if (!text || !text.trim()) throw new Error('Die ausgewählte Datei ist leer. Dein Plan bleibt im Browser erhalten. Lade erneut herunter oder nutze „JSON kopieren“.');
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { throw new Error('Die Datei enthält kein vollständiges JSON-Projekt.'); }
+    const project = ProjectFile.normalize(parsed);
+    if (canonical(parsed) !== canonical(JSON.parse(expected.text))) throw new Error('Die Datei enthält einen anderen Stand als diesen Export. Wähle die gerade heruntergeladene Datei.');
+    return project;
+  }
+  return { prepare, verify };
+})();
 
 // UI
 (() => {
@@ -457,14 +507,16 @@ class ProjectWriter {
   let project = null, view = 'plan', mode = 'people', selected = null, selectedStudent = null, linkStart = null;
   let multiSelect = false, selectedSeats = new Set(), roomResizePreview = null;
   const newProjectTitle = $('room-dialog-title').textContent;
-  let history = [], future = [], revision = 0, savedRevision = 0, fileHandle = null, autosave = false, fileName = '', saveTimer, noticeTimer, busy = false, worker = null, roomDialogMode = 'new', solverMessage = '';
+  let history = [], future = [], revision = 0, savedRevision = 0, fileName = '', noticeTimer, busy = false, worker = null, roomDialogMode = 'new', solverMessage = '';
+  let pendingExport = null, exportRevision = 0, exportVerified = false, downloadRequested = false, alignIds = [];
   let idFloor = { student: 0, seat: 0 }, cache = null;
-  try { cache = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch { }
-  const writer = new ProjectWriter((state, rev, error) => {
-    if (state === 'saved') { savedRevision = rev; cacheProject(); }
-    if (state === 'error') { autosave = false; notice('Die Datei konnte nicht gespeichert werden. Dein Browserentwurf bleibt erhalten. Bitte erneut speichern oder eine Kopie herunterladen.\n' + error.message, true, 12000); }
-    renderSave(state);
-  });
+  // Der bisherige Entwurfsschlüssel bleibt lesbar. Zweite lokale Sicherung für Vorschau-Browser.
+  const cached = [];
+  for (const storage of ['localStorage', 'sessionStorage']) try {
+    const value = JSON.parse(window[storage].getItem(cacheKey) || 'null');
+    if (value?.project) { ProjectFile.normalize(value.project); cached.push(value); }
+  } catch {}
+  cache = cached.sort((a, b) => (b.cachedAt || 0) - (a.cachedAt || 0))[0] || null;
   const student = id => project.students.find(s => s.id === id);
   const seat = id => project.seats.find(s => s.id === id);
   const dirty = () => !!project && revision !== savedRevision;
@@ -509,24 +561,21 @@ class ProjectWriter {
   function safe(action) { try { return action(); } catch (error) { notice(error.message || 'Die Änderung konnte nicht übernommen werden.', true); } }
   function cacheProject() {
     if (!project) return;
-    try { cache = { project: clone(project), dirty: dirty(), fileName }; localStorage.setItem(cacheKey, JSON.stringify(cache)); }
-    catch { if (!cacheProject.warned) { notice('Der Browserentwurf konnte nicht gesichert werden. Speichere deine Projektdatei regelmäßig.', true); cacheProject.warned = true; } }
+    cache = { project: clone(project), dirty: dirty(), fileName, cachedAt: Date.now() };
+    const text = JSON.stringify(cache); let stored = false;
+    for (const storage of ['localStorage', 'sessionStorage']) try { window[storage].setItem(cacheKey, text); stored = true; } catch {}
+    if (!stored && !cacheProject.warned) { notice('Der Browser kann den Entwurf nicht sichern. Exportiere den Plan oder kopiere den JSON-Inhalt, bevor du die Seite schließt.', true, 12000); cacheProject.warned = true; }
   }
-  function renderSave(state) {
-    $('project-heading').hidden = !project; $('save-project').hidden = !project; $('save-copy').hidden = !project;
+  function renderSave() {
+    $('project-heading').hidden = !project; $('save-project').hidden = !project;
     if (!project) return;
     $('project-name').textContent = project.name;
-    let message = state === 'writing' ? 'Speichert …' : autosave ? dirty() ? 'Änderungen werden gespeichert …' : 'Automatisch gespeichert · ' + fileName : dirty() ? 'Projektdatei noch speichern' : fileName ? 'Projektdatei · ' + fileName : 'Browserentwurf';
-    if (state === 'error') message = 'Speichern fehlgeschlagen';
-    $('save-status').textContent = message; $('save-status').classList.toggle('dirty', dirty() || state === 'error');
-    $('save-project').textContent = autosave ? 'Jetzt speichern' : 'Projekt speichern';
-    $('save-project').disabled = busy; $('save-copy').disabled = busy;
-    $('new-project').disabled = busy || writer.running; $('open-project').disabled = busy || writer.running;
+    let message = dirty() ? 'Änderungen im Browser · Datei exportieren' : fileName ? 'Projektdatei · ' + fileName : 'Browserentwurf';
+    if (pendingExport && revision === exportRevision) message = exportVerified ? 'Export geprüft · ' + fileName : downloadRequested ? 'Download angefordert · noch ungeprüft' : 'Export vorbereitet';
+    $('save-status').textContent = message; $('save-status').classList.toggle('dirty', dirty());
+    $('save-project').disabled = busy; $('new-project').disabled = busy; $('open-project').disabled = busy;
   }
-  function scheduleSave() {
-    clearTimeout(saveTimer); cacheProject(); renderSave();
-    if (autosave) saveTimer = setTimeout(() => { writer.request(ProjectFile.serialize(project), revision); }, 550);
-  }
+  function scheduleSave() { cacheProject(); renderSave(); }
   function commit(change, message, refresh = true) {
     if (!project || busy) return;
     return safe(() => {
@@ -539,14 +588,12 @@ class ProjectWriter {
   }
   async function switchAllowed() {
     if (busy) return false;
-    clearTimeout(saveTimer);
-    if (autosave && dirty()) { writer.request(ProjectFile.serialize(project), revision); await writer.flush(); }
     if (dirty() && !confirm('Deine letzten Änderungen sind noch nicht in einer Projektdatei gespeichert. Trotzdem wechseln?')) return false;
     return true;
   }
-  function adopt(p, handle = null, name = '', isDirty = false) {
+  function adopt(p, name = '', isDirty = false) {
     project = ProjectFile.normalize(p); history = []; future = []; clearSelection(); multiSelect = false; roomResizePreview = null; selectedStudent = project.students[0]?.id; linkStart = null;
-    view = 'plan'; mode = project.seats.length ? 'people' : 'layout'; fileHandle = handle; fileName = name; autosave = false; writer.connect(null); writer.pending = null;
+    view = 'plan'; mode = project.seats.length ? 'people' : 'layout'; fileName = name; pendingExport = null; exportVerified = false; downloadRequested = false;
     revision = 1; savedRevision = isDirty ? 0 : 1; idFloor = { ...project.counters }; solverMessage = ''; cacheProject(); render();
   }
   function showRoomDialog(isNew) {
@@ -587,6 +634,7 @@ class ProjectWriter {
     $('selection-count').textContent = selectedSeats.size ? selectedSeats.size + (selectedSeats.size === 1 ? ' Tisch ausgewählt' : ' Tische ausgewählt') : 'Tische anklicken, um sie auszuwählen.';
     $('clear-selection').disabled = !selectedSeats.size;
     $('select-all-tables').disabled = !project.seats.length;
+    $('align-tables').disabled = (selectedSeats.size ? selectedSeats.size : selected?.kind === 'seat' ? 1 : project.seats.length) < 2 || busy;
     $('room').classList.toggle('multi-select', mode === 'layout' && multiSelect);
     syncRoomControls();
     $('room').classList.toggle('editing', mode === 'layout'); $('room').style.aspectRatio = `${project.room.width}/${project.room.height}`;
@@ -762,9 +810,23 @@ class ProjectWriter {
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => $(b.dataset.close).close());
   $('new-project').onclick = $('start-new').onclick = async () => { if (await switchAllowed()) showRoomDialog(true); };
   $('room-tool').onclick = () => showRoomDialog(false);
+  $('align-tables').onclick = () => {
+    alignIds = selectedSeats.size ? [...selectedSeats] : selected?.kind === 'seat' ? [selected.id] : project.seats.map(t => t.id);
+    $('align-count').textContent = alignIds.length + ' Tische'; $('align-status').textContent = '';
+    $('align-columns').max = alignIds.length; $('align-columns').value = Math.min(alignIds.length, Math.ceil(Math.sqrt(alignIds.length)));
+    $('align-dialog').showModal();
+  };
+  $('align-kind').onchange = () => $('align-columns-label').hidden = $('align-kind').value !== 'grid';
+  $('align-form').onsubmit = event => {
+    event.preventDefault();
+    try {
+      const next = clone(project); Model.arrangeSeats(next, alignIds, $('align-kind').value, +$('align-gap').value, +$('align-columns').value);
+      if (commit(p => { p.seats = next.seats; p.neighbours = next.neighbours; })) $('align-dialog').close();
+    } catch (error) { $('align-status').textContent = error.message; }
+  };
   $('room-form').onsubmit = event => {
     event.preventDefault();
-    if (roomDialogMode === 'new') { safe(() => { adopt(ProjectFile.create($('room-name').value, +$('room-width').value, +$('room-height').value), null, '', true); $('room-dialog').close(); }); }
+    if (roomDialogMode === 'new') { safe(() => { adopt(ProjectFile.create($('room-name').value, +$('room-width').value, +$('room-height').value), '', true); $('room-dialog').close(); }); }
     else if (commit(p => { p.name = $('room-name').value; p.ballotRound = $('room-round').value; Model.resize(p, +$('room-width').value, +$('room-height').value); })) $('room-dialog').close();
   };
   $('add-students').onclick = () => { $('names-text').value = ''; $('names-dialog').showModal(); };
@@ -789,8 +851,8 @@ class ProjectWriter {
   }
   $('undo').onclick = () => travel(history, future); $('redo').onclick = () => travel(future, history);
   $('print-plan').onclick = () => { clearSelection(); renderPlan(); window.print(); };
-  $('recover').onclick = () => safe(() => { const draft = ProjectFile.normalize(cache.project); adopt(draft, null, '', true); notice('Browserentwurf wiederhergestellt. Speichere ihn als Projektdatei.'); });
-  $('home').onclick = async event => { event.preventDefault(); if (await switchAllowed()) { project = null; writer.connect(null); fileHandle = null; autosave = false; render(); } };
+  $('recover').onclick = () => safe(() => { const draft = ProjectFile.normalize(cache.project); adopt(draft, '', true); notice('Browserentwurf wiederhergestellt. Speichere ihn als Projektdatei.'); });
+  $('home').onclick = async event => { event.preventDefault(); if (await switchAllowed()) { project = null; render(); } };
 
   function importWishes(text) {
     if (!project) { notice('Diese Datei enthält nur Wunschzettel. Erstelle oder öffne zuerst ein Projekt mit den dazugehörigen Personen-IDs.', true); return; }
@@ -799,8 +861,8 @@ class ProjectWriter {
       if (commit(p => Object.assign(p, Ballots.merge(p, records)))) { view = 'students'; render(); notice(`${records.length} Wunschzettel übernommen. Sie sind jetzt Teil dieses Projekts. Bereits vorhandene Wünsche dieser Personen wurden ersetzt.`, false, 9000); }
     } catch (error) { notice('Keine Wünsche übernommen.\n' + (error.details || [error.message]).slice(0, 5).join('\n'), true, 14000); }
   }
-  async function readFile(file) { if (file.size > 2 * 1024 * 1024) throw new Error('Die Datei ist zu groß. Erlaubt sind bis zu 2 MB.'); return file.text(); }
-  async function openFile(file, handle = null) {
+  async function readFile(file) { if (!file.size) throw new Error('Die ausgewählte Datei ist leer. Dein aktueller Plan wurde nicht verändert.'); if (file.size > 2 * 1024 * 1024) throw new Error('Die Datei ist zu groß. Erlaubt sind bis zu 2 MB.'); const text = await file.text(); if (!text.trim()) throw new Error('Die ausgewählte Datei enthält keine Daten.'); return text; }
+  async function openFile(file) {
     const text = await readFile(file), trimmed = text.trim(); let data, defaults;
     if (trimmed.startsWith('<')) {
       const doc = new DOMParser().parseFromString(text, 'text/html'), node = doc.getElementById('initial-data');
@@ -812,46 +874,63 @@ class ProjectWriter {
     }
     const normalized = ProjectFile.normalize(data, defaults);
     if (!(await switchAllowed())) return;
-    adopt(normalized, handle, file.name, data.version !== 3);
-    notice(handle ? 'Projekt geöffnet. Mit „Projekt speichern“ gibst du das automatische Speichern in diese Datei frei.' : 'Projekt geöffnet. Änderungen speicherst du mit „Projekt speichern“ als neue Projektdatei.', false, 8500);
+    adopt(normalized, file.name, data.version !== 3);
+    notice('Projekt geöffnet. Änderungen sicherst du mit „Projekt exportieren“ als vollständige JSON-Datei.');
   }
-  async function openProject() {
+  function openProject() {
     if (busy) return;
-    try {
-      if (window.showOpenFilePicker && window.isSecureContext) {
-        const [handle] = await window.showOpenFilePicker({ multiple: false, types: [{ description: 'Sitzplan-Projekt oder Wunschzettel', accept: { 'application/json': ['.json'], 'text/plain': ['.txt'], 'text/html': ['.html'] } }] });
-        await openFile(await handle.getFile(), handle);
-      } else { $('project-input').value = ''; $('project-input').click(); }
-    } catch (error) { if (error.name !== 'AbortError') notice(error.message, true); }
+    $('project-input').value = ''; $('project-input').click();
   }
   $('open-project').onclick = $('start-open').onclick = openProject;
   $('project-input').onchange = async () => { const file = $('project-input').files[0]; if (file) try { await openFile(file); } catch (error) { notice('Projekt konnte nicht geöffnet werden: ' + error.message, true); } };
   $('import-wishes').onclick = () => { $('wishes-input').value = ''; $('wishes-input').click(); };
   $('wishes-input').onchange = async () => { const file = $('wishes-input').files[0]; if (file) try { importWishes(await readFile(file)); } catch (error) { notice(error.message, true); } };
-  function download(text, name) {
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' })), a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 30000);
-  }
-  const suggestedName = () => project.name.replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '') + '.json';
-  async function saveProject(copy = false) {
+  function saveProject() {
     if (!project || busy) return;
-    clearTimeout(saveTimer);
-    if (copy) { download(ProjectFile.serialize(project), suggestedName()); notice('Kopie heruntergeladen. Sie enthält den gesamten Raum, alle Personen, Wünsche und Regeln.'); return; }
-    try {
-      if ((fileHandle || window.showSaveFilePicker) && window.isSecureContext) {
-        let handle = fileHandle;
-        if (!handle) handle = await window.showSaveFilePicker({ suggestedName: suggestedName(), types: [{ description: 'Sitzplan-Projekt', accept: { 'application/json': ['.json'] } }] });
-        const permission = await handle.queryPermission({ mode: 'readwrite' });
-        if (permission !== 'granted' && await handle.requestPermission({ mode: 'readwrite' }) !== 'granted') throw new Error('Die Schreibfreigabe fehlt. Nutze „Kopie speichern“, um das Projekt herunterzuladen.');
-        await writer.flush(); fileHandle = handle; fileName = handle.name; writer.connect(handle); autosave = true;
-        writer.request(ProjectFile.serialize(project), revision); await writer.flush(); renderSave();
-      } else {
-        download(ProjectFile.serialize(project), suggestedName()); savedRevision = revision; fileName = suggestedName(); cacheProject(); renderSave();
-        notice('Projektdatei heruntergeladen. Dieser Browser kann sie nicht automatisch überschreiben. Lade nach weiteren Änderungen die aktuelle Projektdatei erneut herunter.', false, 11000);
-      }
-    } catch (error) { if (error.name !== 'AbortError') notice('Speichern nicht möglich: ' + error.message, true, 11000); }
+    safe(() => {
+      finishRoomResize();
+      pendingExport = ProjectExport.prepare(project); exportRevision = revision; exportVerified = false; downloadRequested = false;
+      cacheProject();
+      $('export-download').href = pendingExport.url; $('export-download').download = pendingExport.filename;
+      $('export-json').value = pendingExport.text;
+      $('export-summary').textContent = `${pendingExport.filename} · ${pendingExport.people} Personen · ${pendingExport.tables} Tische · ${pendingExport.rules} Regeln · ${pendingExport.size.toLocaleString('de-DE')} Byte`;
+      $('export-status').textContent = 'Vollständige JSON-Datei vorbereitet. Nach dem Download kannst du die gespeicherte Datei prüfen.';
+      $('export-status').classList.remove('error');
+      renderSave(); if (!$('export-dialog').open) $('export-dialog').showModal();
+    });
   }
-  $('save-project').onclick = () => saveProject(); $('save-copy').onclick = () => saveProject(true);
-  window.addEventListener('beforeunload', event => { if (dirty() || writer.running) { event.preventDefault(); event.returnValue = ''; } });
+  $('save-project').onclick = saveProject;
+  $('export-download').onclick = () => {
+    downloadRequested = true; cacheProject(); renderSave();
+    $('export-status').textContent = 'Download angefordert. Falls er leer bleibt oder blockiert wird, nutze „JSON kopieren“. Dein Plan bleibt geöffnet.';
+  };
+  $('copy-export').onclick = async () => {
+    if (!pendingExport) return;
+    const text = pendingExport.text;
+    $('export-details').open = true; $('export-json').focus(); $('export-json').select();
+    $('export-status').classList.remove('error');
+    $('export-status').textContent = 'Der vollständige JSON-Inhalt ist markiert. Falls er nicht automatisch kopiert wird: ⌘C oder Strg+C drücken und als .json-Datei speichern.';
+    // Die sichtbare Auswahl bleibt auch dann nutzbar, wenn eine Vorschau die Zwischenablage blockiert.
+    try { await navigator.clipboard.writeText(text); } catch {}
+  };
+  $('verify-export').onclick = () => { $('verify-input').value = ''; $('verify-input').click(); };
+  $('verify-input').onchange = async () => {
+    const file = $('verify-input').files[0], expected = pendingExport, checkedRevision = exportRevision;
+    if (!file || !expected) return;
+    try {
+      ProjectExport.verify(await readFile(file), expected);
+      if (pendingExport !== expected) return;
+      savedRevision = checkedRevision; fileName = file.name; exportVerified = true; cacheProject(); renderSave();
+      $('export-status').classList.remove('error');
+      $('export-status').textContent = 'Datei geprüft: Der vollständige Export ist enthalten und wieder lesbar.' + (revision !== checkedRevision ? ' Neuere Änderungen bitte ebenfalls exportieren.' : '');
+    } catch (error) {
+      if (pendingExport !== expected) return;
+      $('export-status').classList.add('error'); $('export-status').textContent = 'Datei nicht bestätigt: ' + error.message;
+    }
+  };
+  window.addEventListener('pagehide', cacheProject);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cacheProject(); });
+  window.addEventListener('beforeunload', event => { cacheProject(); if (dirty()) { event.preventDefault(); event.returnValue = ''; } });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') { cancelRoomResize(); clearSelection(); linkStart = null; if (project && view === 'plan') renderPlan(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && project) { event.preventDefault(); saveProject(); }

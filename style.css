@@ -1150,3 +1150,32 @@ input[type="range"] {
 }
 
 .busy .room-controls, .busy .selection-tools { pointer-events: none; opacity: .65 }
+
+/* Der Export ist ein sichtbarer, unveränderlicher Download und bleibt im selben Projekt. */
+.export-dialog {
+    width: min(680px, calc(100vw - 32px));
+    max-height: calc(100dvh - 32px);
+    overflow: auto
+}
+.export-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 }
+#export-download {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--accent);
+    border-radius: 9px;
+    padding: 10px 15px;
+    font-size: 14px;
+    font-weight: 550;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color .15s, border-color .15s
+}
+#export-status { min-height: 44px }
+#export-status.error { color: #9e2d27 }
+#export-details summary { color: var(--accent); cursor: pointer; padding: 8px 0; font-size: 14px }
+#export-json { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; margin-top: 8px; tab-size: 2 }
+@media(max-width:650px) { .export-actions > * { width: 100% } }
+
+.align-error { color: #9e2d27 }
+.align-error:empty { display: none }
