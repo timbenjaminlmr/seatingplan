@@ -1,0 +1,28 @@
+# Generierte Dateien und lokale Werkzeuge
+/dist/
+/node_modules/
+/.vercel/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.example
+
+# Persönliche Klassendaten und Downloads gehören nicht ins Repository.
+/private/
+/data/
+/exports/
+/outputs/
+/work/
+*.txt
+*.json
+*.zip
+*.html.before
+*.js.before
+*.css.before
+
+# Diese JSON-Dateien enthalten ausschließlich Projektkonfiguration.
+!/package.json
+!/package-lock.json
+!/vercel.json

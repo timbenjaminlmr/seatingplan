@@ -392,13 +392,42 @@ const Model = (() => {
     if (previousStudent && previousSeat && previousSeat !== seatId) p.assignment[previousStudent] = previousSeat;
     p.assignment[studentId] = seatId;
   }
+  function updateSeats(p, ids, changes) {
+    if (changes.direction !== undefined && !['down', 'left', 'up', 'right'].includes(changes.direction)) throw new Error('Ungültige Blickrichtung.');
+    if (changes.back !== undefined && typeof changes.back !== 'boolean') throw new Error('Ungültige Kennzeichnung für hintere Plätze.');
+    const chosen = new Set(ids);
+    for (const item of p.seats) if (chosen.has(item.id)) {
+      if (changes.direction !== undefined) item.direction = changes.direction;
+      if (changes.back !== undefined) item.back = changes.back;
+    }
+    if (changes.direction !== undefined) geometryChanged(p);
+  }
+  function clampMove(p, items, dx, dy) {
+    if (!items.length) return { dx: 0, dy: 0 };
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) throw new Error('Ungültige Verschiebung.');
+    return {
+      dx: Math.max(-Math.min(...items.map(t => t.x)), Math.min(p.room.width - Math.max(...items.map(t => t.x + t.width)), Math.round(dx))),
+      dy: Math.max(-Math.min(...items.map(t => t.y)), Math.min(p.room.height - Math.max(...items.map(t => t.y + t.height)), Math.round(dy)))
+    };
+  }
+  function moveSeats(p, ids, dx, dy) {
+    const chosen = new Set(ids), items = p.seats.filter(t => chosen.has(t.id));
+    const delta = clampMove(p, items, dx, dy);
+    for (const item of items) { item.x += delta.dx; item.y += delta.dy; }
+    geometryChanged(p);
+  }
+  function rotateSeats(p, ids) {
+    const chosen = new Set(ids), directions = ['down', 'left', 'up', 'right'];
+    for (const item of p.seats) if (chosen.has(item.id)) item.direction = directions[(directions.indexOf(item.direction) + 1) % 4];
+    geometryChanged(p);
+  }
   function resize(p, width, height) {
     if (!Number.isFinite(width) || !Number.isFinite(height)) throw new Error('Bitte gültige Raummaße eingeben.');
     const sx = width / p.room.width, sy = height / p.room.height;
     for (const s of [...p.seats, p.room.desk, p.room.board]) { s.x = Math.max(0, Math.min(width - (s.width || 100), s.x * sx)); s.y = Math.max(0, Math.min(height - (s.height || 64), s.y * sy)); }
     p.room.width = width; p.room.height = height; p.room = ProjectFile.room(p.room); geometryChanged(p); remember(p);
   }
-  return { remember, detectNeighbours, geometryChanged, addStudents, removeStudent, addSeats, removeSeat, assign, resize };
+  return { remember, detectNeighbours, geometryChanged, addStudents, removeStudent, addSeats, removeSeat, assign, updateSeats, clampMove, moveSeats, rotateSeats, resize };
 })();
 
 // Schreibvorgänge bleiben in Reihenfolge; schnelle Änderungen werden zusammengefasst.
@@ -426,6 +455,8 @@ class ProjectWriter {
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const cacheKey = 'sitzplaner.project.v3.' + location.pathname;
   let project = null, view = 'plan', mode = 'people', selected = null, selectedStudent = null, linkStart = null;
+  let multiSelect = false, selectedSeats = new Set(), roomResizePreview = null;
+  const newProjectTitle = $('room-dialog-title').textContent;
   let history = [], future = [], revision = 0, savedRevision = 0, fileHandle = null, autosave = false, fileName = '', saveTimer, noticeTimer, busy = false, worker = null, roomDialogMode = 'new', solverMessage = '';
   let idFloor = { student: 0, seat: 0 }, cache = null;
   try { cache = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch { }
@@ -438,6 +469,42 @@ class ProjectWriter {
   const seat = id => project.seats.find(s => s.id === id);
   const dirty = () => !!project && revision !== savedRevision;
   const selectedObject = () => selected?.kind === 'seat' ? seat(selected.id) : selected ? project.room[selected.kind] : null;
+  function clearSelection() { selected = null; selectedSeats.clear(); }
+  function roomMinimum(p) {
+    return { width: Math.ceil(Math.max(600, p.room.desk.width, p.room.board.width)), height: Math.ceil(Math.max(400, p.room.desk.height, p.room.board.height)) };
+  }
+  function syncRoomControls() {
+    const minimum = roomMinimum(project);
+    for (const dimension of ['width', 'height']) {
+      const input = $('plan-room-' + dimension);
+      input.min = minimum[dimension]; input.value = project.room[dimension]; input.disabled = busy;
+      $('plan-room-' + dimension + '-value').textContent = Math.round(project.room[dimension]);
+    }
+  }
+  function syncRoomDialog() {
+    const width = +$('room-width').value, height = +$('room-height').value;
+    $('room-width-value').textContent = width; $('room-height-value').textContent = height;
+    const scale = Math.min(220 / width, 112 / height);
+    $('room-outline').style.width = width * scale + 'px'; $('room-outline').style.height = height * scale + 'px';
+  }
+  function previewRoomResize() {
+    if (!project || busy) return;
+    roomResizePreview ||= clone(project);
+    const next = clone(roomResizePreview), original = project;
+    try {
+      Model.resize(next, +$('plan-room-width').value, +$('plan-room-height').value);
+      // Nur die Darstellung ändert sich während des Ziehens. Ein Loslassen ergibt einen Undo-Schritt.
+      project = next; renderPlan(true);
+    } finally { project = original; }
+  }
+  function finishRoomResize() {
+    if (!roomResizePreview) return;
+    const width = +$('plan-room-width').value, height = +$('plan-room-height').value;
+    roomResizePreview = null;
+    if (width === project.room.width && height === project.room.height) { renderPlan(true); return; }
+    if (!commit(p => Model.resize(p, width, height))) renderPlan();
+  }
+  function cancelRoomResize() { if (roomResizePreview) { roomResizePreview = null; renderPlan(true); } }
   function notice(message, error = false, duration = 6500) { $('notice').textContent = message; $('notice').classList.toggle('error', error); $('notice').hidden = false; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => $('notice').hidden = true, duration); }
   function safe(action) { try { return action(); } catch (error) { notice(error.message || 'Die Änderung konnte nicht übernommen werden.', true); } }
   function cacheProject() {
@@ -478,16 +545,18 @@ class ProjectWriter {
     return true;
   }
   function adopt(p, handle = null, name = '', isDirty = false) {
-    project = ProjectFile.normalize(p); history = []; future = []; selected = null; selectedStudent = project.students[0]?.id; linkStart = null;
+    project = ProjectFile.normalize(p); history = []; future = []; clearSelection(); multiSelect = false; roomResizePreview = null; selectedStudent = project.students[0]?.id; linkStart = null;
     view = 'plan'; mode = project.seats.length ? 'people' : 'layout'; fileHandle = handle; fileName = name; autosave = false; writer.connect(null); writer.pending = null;
     revision = 1; savedRevision = isDirty ? 0 : 1; idFloor = { ...project.counters }; solverMessage = ''; cacheProject(); render();
   }
   function showRoomDialog(isNew) {
     roomDialogMode = isNew ? 'new' : 'edit';
-    $('room-dialog-title').textContent = isNew ? 'Neuer Sitzplan' : 'Raum einstellen';
+    $('room-dialog-title').textContent = isNew ? newProjectTitle : 'Raum einstellen';
+    const minimum = isNew ? { width: 600, height: 400 } : roomMinimum(project);
+    $('room-width').min = minimum.width; $('room-height').min = minimum.height;
     $('room-name').value = isNew ? 'Meine Klasse' : project.name; $('room-width').value = isNew ? 1000 : project.room.width; $('room-height').value = isNew ? 780 : project.room.height;
     $('round-label').hidden = isNew; $('room-round').value = isNew ? '' : project.ballotRound;
-    $('room-dialog').showModal();
+    syncRoomDialog(); $('room-dialog').showModal();
   }
   function render() {
     $('welcome').hidden = !!project; $('workspace').hidden = !project; $('recover').hidden = !cache;
@@ -501,16 +570,25 @@ class ProjectWriter {
   function objectMarkup(item, kind, report) {
     const who = kind === 'seat' ? project.students.find(s => project.assignment[s.id] === item.id) : null;
     const classes = ['object', kind === 'seat' ? 'seat' : 'furniture ' + kind];
-    if (selected?.kind === kind && (kind !== 'seat' || selected.id === item.id)) classes.push('selected');
+    const isSelected = mode === 'layout' && multiSelect && kind === 'seat' ? selectedSeats.has(item.id) : selected?.kind === kind && (kind !== 'seat' || selected.id === item.id);
+    if (isSelected) classes.push('selected');
     if (kind === 'seat' && linkStart === item.id) classes.push('link-start');
     if (who && report.hardStudents.includes(who.id)) classes.push('hard'); else if (who && report.softStudents.includes(who.id)) classes.push('soft');
     const label = kind === 'seat' ? 'Tisch ' + item.label + (who ? ', ' + who.name : ', frei') + (item.back ? ', hinten' : '') + (item.note ? ', ' + item.note : '') : item.label;
-    return `<button type="button" class="${classes.join(' ')}" data-object="${kind}" data-id="${esc(item.id || kind)}" aria-label="${esc(label)}" title="${esc(label)}" style="left:${item.x / project.room.width * 100}%;top:${item.y / project.room.height * 100}%;width:${item.width / project.room.width * 100}%;height:${item.height / project.room.height * 100}%">${kind === 'seat' ? `<span class="seat-meta"><span>${esc(item.label)}</span><span class="tag">${item.back ? 'H ' : ''}${item.note ? '! ' : ''}${directions[item.direction]}</span></span><span class="seat-name">${esc(who?.name || 'Frei')}</span>` : esc(item.label)}</button>`;
+    return `<button type="button" class="${classes.join(' ')}" data-object="${kind}" data-id="${esc(item.id || kind)}" aria-label="${esc(label)}" aria-pressed="${!!isSelected}" title="${esc(label)}" style="left:${item.x / project.room.width * 100}%;top:${item.y / project.room.height * 100}%;width:${item.width / project.room.width * 100}%;height:${item.height / project.room.height * 100}%">${kind === 'seat' ? `<span class="seat-meta"><span>${esc(item.label)}</span><span class="tag">${item.back ? 'H ' : ''}${item.note ? '! ' : ''}${directions[item.direction]}</span></span><span class="seat-name">${esc(who?.name || 'Frei')}</span>` : esc(item.label)}</button>`;
   }
   function renderPlan(keepEditor = false) {
     const report = Engine.evaluate(project, project.assignment);
     document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    selectedSeats = new Set([...selectedSeats].filter(id => seat(id)));
     $('layout-tools').hidden = mode !== 'layout'; $('link-tools').hidden = mode !== 'links';
+    $('room-controls').hidden = mode !== 'layout'; $('selection-tools').hidden = mode !== 'layout' || !multiSelect;
+    $('multi-select').setAttribute('aria-pressed', String(multiSelect));
+    $('selection-count').textContent = selectedSeats.size ? selectedSeats.size + (selectedSeats.size === 1 ? ' Tisch ausgewählt' : ' Tische ausgewählt') : 'Tische anklicken, um sie auszuwählen.';
+    $('clear-selection').disabled = !selectedSeats.size;
+    $('select-all-tables').disabled = !project.seats.length;
+    $('room').classList.toggle('multi-select', mode === 'layout' && multiSelect);
+    syncRoomControls();
     $('room').classList.toggle('editing', mode === 'layout'); $('room').style.aspectRatio = `${project.room.width}/${project.room.height}`;
     const markup = project.seats.map(t => objectMarkup(t, 'seat', report)).join('') + ['desk', 'board'].filter(k => project.room[k].enabled).map(k => objectMarkup(project.room[k], k, report)).join('');
     if (!keepEditor) $('objects').innerHTML = markup;
@@ -518,7 +596,7 @@ class ProjectWriter {
       const temp = document.createElement('div'); temp.innerHTML = markup;
       for (const next of temp.children) {
         const previous = [...$('objects').children].find(el => el.dataset.object === next.dataset.object && el.dataset.id === next.dataset.id);
-        if (previous) { for (const name of ['style', 'class', 'aria-label', 'title']) previous.setAttribute(name, next.getAttribute(name)); previous.innerHTML = next.innerHTML; }
+        if (previous) { for (const name of ['style', 'class', 'aria-label', 'aria-pressed', 'title']) previous.setAttribute(name, next.getAttribute(name)); previous.innerHTML = next.innerHTML; }
       }
     }
     $('empty-room').hidden = !!project.seats.length || project.room.desk.enabled || project.room.board.enabled;
@@ -533,13 +611,26 @@ class ProjectWriter {
     $('report').textContent = [solverMessage, summary, ...report.warnings.slice(0, 8), report.warnings.length > 8 ? 'Weitere Regelkonflikte sind im Plan rot markiert.' : ''].filter(Boolean).join('\n');
     if (!keepEditor) renderInspector();
   }
+  function renderBulkInspector() {
+    const items = project.seats.filter(t => selectedSeats.has(t.id));
+    const direction = items.every(t => t.direction === items[0].direction) ? items[0].direction : '';
+    const backCount = items.filter(t => t.back).length, ids = items.map(t => t.id);
+    $('inspector').hidden = false; $('editor-grid').classList.add('has-inspector');
+    $('inspector').innerHTML = `<h3><button id="close-inspector" class="close" aria-label="Auswahl schließen">×</button>${items.length} Tische</h3><label>Blickrichtung<select id="bulk-direction">${!direction ? '<option value="" selected disabled>Unterschiedlich</option>' : ''}${Object.entries(directions).map(([value, arrow]) => `<option value="${value}" ${direction === value ? 'selected' : ''}>${({ down: 'Nach unten', up: 'Nach oben', left: 'Nach links', right: 'Nach rechts' })[value]} ${arrow}</option>`).join('')}</select></label><label class="inline-check"><input type="checkbox" id="bulk-back" ${backCount === items.length ? 'checked' : ''}>Hintere Plätze</label><button id="delete-selected" class="danger">Tische entfernen</button><span class="muted">Gemeinsam ziehen oder mit Pfeiltasten verschieben. R dreht die Auswahl.</span>`;
+    $('close-inspector').onclick = () => { clearSelection(); renderPlan(); };
+    $('bulk-direction').onchange = event => commit(p => Model.updateSeats(p, ids, { direction: event.target.value }));
+    $('bulk-back').indeterminate = backCount > 0 && backCount < items.length;
+    $('bulk-back').onchange = event => commit(p => Model.updateSeats(p, ids, { back: event.target.checked }));
+    $('delete-selected').onclick = () => commit(p => { ids.forEach(id => Model.removeSeat(p, id)); clearSelection(); });
+  }
   function renderInspector() {
+    if (mode === 'layout' && multiSelect && selectedSeats.size > 1) { renderBulkInspector(); return; }
     const o = selectedObject(); if (!o) selected = null;
     const show = !!o && mode !== 'links'; $('inspector').hidden = !show; $('editor-grid').classList.toggle('has-inspector', show); if (!show) return;
     const isSeat = selected.kind === 'seat';
     const who = isSeat ? project.students.find(s => project.assignment[s.id] === o.id)?.id || '' : '';
     $('inspector').innerHTML = `<h3><button id="close-inspector" class="close" aria-label="Auswahl schließen">×</button>${isSeat ? 'Tisch ' + esc(o.label) : esc(o.label)}</h3>` + (isSeat ? `<label>Person<select id="seat-person"><option value="">Frei</option>${project.students.map(s => `<option value="${esc(s.id)}" ${s.id === who ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>` : '') + (mode === 'layout' ? `<label>Bezeichnung<input id="object-label" maxlength="40" value="${esc(o.label)}"></label><div class="two-columns"><label>Breite<input id="object-width" type="number" min="${isSeat ? 40 : 20}" max="${isSeat ? 300 : project.room.width}" value="${o.width}"></label><label>Höhe<input id="object-height" type="number" min="${isSeat ? 32 : 16}" max="${isSeat ? 240 : project.room.height}" value="${o.height}"></label></div>${isSeat ? `<label>Blickrichtung<select id="seat-direction">${Object.entries(directions).map(([v, arrow]) => `<option value="${v}" ${o.direction === v ? 'selected' : ''}>${({ down: 'Nach unten', up: 'Nach oben', left: 'Nach links', right: 'Nach rechts' })[v]} ${arrow}</option>`).join('')}</select></label><label class="inline-check"><input type="checkbox" id="seat-back" ${o.back ? 'checked' : ''}>Hinterer Platz</label><label>Platznotiz<textarea id="seat-note" rows="2" maxlength="500" placeholder="z. B. eingeschränkte Sicht">${esc(o.note)}</textarea></label><p class="hint">Notizen markieren Problemstellen. Verbindliche Vorgaben legst du unter „Regeln“ fest.</p>` : ''}<button id="delete-object" class="danger">${isSeat ? 'Tisch' : esc(o.label)} entfernen</button><span class="muted">Ziehen oder Pfeiltasten zum Verschieben${isSeat ? ', R zum Drehen' : ''}.</span>` : `<p class="hint">Zwei Tische nacheinander anklicken, um Personen zu tauschen. Über die Liste kannst du auch unplatzierte Personen setzen.</p>`);
-    $('close-inspector').onclick = () => { selected = null; renderPlan(); };
+    $('close-inspector').onclick = () => { clearSelection(); renderPlan(); };
     if (isSeat) $('seat-person').onchange = event => commit(p => Model.assign(p, event.target.value, o.id));
     if (mode !== 'layout') return;
     $('object-label').onchange = event => commit(p => { const obj = isSeat ? p.seats.find(t => t.id === o.id) : p.room[selected.kind]; if (!event.target.value.trim()) throw new Error('Bitte eine Bezeichnung eingeben.'); obj.label = event.target.value.trim(); }, null, false);
@@ -551,7 +642,7 @@ class ProjectWriter {
       $('seat-back').onchange = event => commit(p => p.seats.find(t => t.id === o.id).back = event.target.checked);
       $('seat-note').onchange = event => commit(p => p.seats.find(t => t.id === o.id).note = event.target.value, null, false);
     }
-    $('delete-object').onclick = () => commit(p => { if (isSeat) Model.removeSeat(p, o.id); else p.room[selected.kind].enabled = false; selected = null; });
+    $('delete-object').onclick = () => commit(p => { if (isSeat) Model.removeSeat(p, o.id); else p.room[selected.kind].enabled = false; clearSelection(); });
   }
   function renderStudents(keepEditor = false) {
     if (!student(selectedStudent)) selectedStudent = project.students[0]?.id;
@@ -587,6 +678,12 @@ class ProjectWriter {
       if (first === id) { renderPlan(); return; }
       commit(p => { const index = p.neighbours.findIndex(pair => pair.includes(first) && pair.includes(id)); if (index >= 0) p.neighbours.splice(index, 1); else p.neighbours.push([first, id]); p.neighbourMode = 'manual'; }); return;
     }
+    if (mode === 'layout' && multiSelect && kind === 'seat') {
+      if (selectedSeats.has(id)) selectedSeats.delete(id); else selectedSeats.add(id);
+      selected = selectedSeats.size ? { kind: 'seat', id: [...selectedSeats].at(-1) } : null;
+      renderPlan(); return;
+    }
+    if (mode === 'layout' && kind !== 'seat') selectedSeats.clear();
     if (mode === 'people' && kind === 'seat' && selected?.kind === 'seat' && selected.id !== id) {
       const previous = selected.id; selected = null;
       commit(p => { const a = Object.keys(p.assignment).find(s => p.assignment[s] === previous), b = Object.keys(p.assignment).find(s => p.assignment[s] === id); if (a) p.assignment[a] = id; if (b) p.assignment[b] = previous; }); return;
@@ -594,42 +691,73 @@ class ProjectWriter {
     selected = selected?.kind === kind && selected.id === id ? null : { kind, id }; renderPlan();
   }
   let drag = null, suppressClick = false;
+  const selectedFor = id => multiSelect && selectedSeats.has(id) ? [...selectedSeats] : [id];
   $('objects').addEventListener('pointerdown', event => {
     const el = event.target.closest('[data-object]'); if (!el || mode !== 'layout' || busy || event.button !== 0) return;
-    const kind = el.dataset.object, id = el.dataset.id, object = kind === 'seat' ? seat(id) : project.room[kind];
-    drag = { el, kind, id, startX: event.clientX, startY: event.clientY, x: object.x, y: object.y, nextX: object.x, nextY: object.y, width: object.width, height: object.height, moved: false, rect: $('room').getBoundingClientRect() };
+    const kind = el.dataset.object, id = el.dataset.id;
+    const ids = kind === 'seat' ? selectedFor(id) : [id];
+    const items = ids.map(itemId => clone(kind === 'seat' ? seat(itemId) : project.room[kind]));
+    drag = { el, kind, id, ids, items, startX: event.clientX, startY: event.clientY, dx: 0, dy: 0, moved: false, rect: $('room').getBoundingClientRect() };
     el.setPointerCapture(event.pointerId);
   });
   $('objects').addEventListener('pointermove', event => {
     if (!drag) return;
     const dx = event.clientX - drag.startX, dy = event.clientY - drag.startY;
     if (Math.hypot(dx, dy) > 3) drag.moved = true; if (!drag.moved) return;
-    drag.el.classList.add('dragging');
-    drag.nextX = Math.round(Math.max(0, Math.min(project.room.width - drag.width, drag.x + dx * project.room.width / drag.rect.width)));
-    drag.nextY = Math.round(Math.max(0, Math.min(project.room.height - drag.height, drag.y + dy * project.room.height / drag.rect.height)));
-    drag.el.style.left = drag.nextX / project.room.width * 100 + '%'; drag.el.style.top = drag.nextY / project.room.height * 100 + '%';
+    Object.assign(drag, Model.clampMove(project, drag.items, dx * project.room.width / drag.rect.width, dy * project.room.height / drag.rect.height));
+    for (const item of drag.items) {
+      const el = drag.kind === 'seat' ? $('objects').querySelector(`[data-object="seat"][data-id="${item.id}"]`) : drag.el;
+      el.classList.add('dragging'); el.style.left = (item.x + drag.dx) / project.room.width * 100 + '%'; el.style.top = (item.y + drag.dy) / project.room.height * 100 + '%';
+    }
   });
   function endDrag(cancelled) {
     if (!drag) return; const d = drag; drag = null;
-    if (d.moved) {
-      suppressClick = true; setTimeout(() => suppressClick = false, 0);
-      if (cancelled) renderPlan(); else { selected = { kind: d.kind, id: d.id }; commit(p => { const o = d.kind === 'seat' ? p.seats.find(t => t.id === d.id) : p.room[d.kind]; o.x = d.nextX; o.y = d.nextY; Model.geometryChanged(p); }); }
-    }
+    if (!d.moved) return;
+    suppressClick = true; setTimeout(() => suppressClick = false, 0);
+    if (cancelled) { renderPlan(); return; }
+    selected = { kind: d.kind, id: d.id };
+    if (d.kind === 'seat' && multiSelect) selectedSeats = new Set(d.ids);
+    commit(p => {
+      if (d.kind === 'seat') Model.moveSeats(p, d.ids, d.dx, d.dy);
+      else { p.room[d.kind].x = d.items[0].x + d.dx; p.room[d.kind].y = d.items[0].y + d.dy; }
+    });
   }
   $('objects').addEventListener('pointerup', () => endDrag(false)); $('objects').addEventListener('pointercancel', () => endDrag(true));
   $('objects').addEventListener('click', event => { if (suppressClick) return; const el = event.target.closest('[data-object]'); if (el) selectObject(el.dataset.object, el.dataset.id); });
+  $('room').addEventListener('click', event => {
+    if (suppressClick || busy || event.target.closest('[data-object]') || event.target.closest('button')) return;
+    clearSelection(); linkStart = null; renderPlan();
+  });
   $('objects').addEventListener('keydown', event => {
     const el = event.target.closest('[data-object]'); if (!el || mode !== 'layout' || busy || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'r', 'R'].includes(event.key)) return;
-    event.preventDefault(); const kind = el.dataset.object, id = el.dataset.id;
+    event.preventDefault(); const kind = el.dataset.object, id = el.dataset.id, ids = kind === 'seat' ? selectedFor(id) : [id];
+    if (kind === 'seat' && multiSelect) { selectedSeats = new Set(ids); selected = { kind, id }; }
     commit(p => {
-      const o = kind === 'seat' ? p.seats.find(t => t.id === id) : p.room[kind], step = event.shiftKey ? 20 : 5;
-      if (event.key.toLowerCase() === 'r') { if (kind === 'seat') o.direction = ['down', 'left', 'up', 'right'][(['down', 'left', 'up', 'right'].indexOf(o.direction) + 1) % 4]; }
-      else { o.x = Math.max(0, Math.min(p.room.width - o.width, o.x + (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0))); o.y = Math.max(0, Math.min(p.room.height - o.height, o.y + (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0))); }
-      Model.geometryChanged(p);
+      const step = event.shiftKey ? 20 : 5;
+      if (event.key.toLowerCase() === 'r') { if (kind === 'seat') Model.rotateSeats(p, ids); }
+      else {
+        const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0, dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
+        if (kind === 'seat') Model.moveSeats(p, ids, dx, dy);
+        else { const item = p.room[kind], delta = Model.clampMove(p, [item], dx, dy); item.x += delta.dx; item.y += delta.dy; }
+      }
     });
     $('objects').querySelector(`[data-object="${kind}"][data-id="${id}"]`)?.focus();
   });
-  document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { mode = b.dataset.mode; selected = null; linkStart = null; renderPlan(); });
+  document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { cancelRoomResize(); mode = b.dataset.mode; clearSelection(); multiSelect = false; linkStart = null; renderPlan(); });
+  $('multi-select').onclick = () => {
+    multiSelect = !multiSelect;
+    if (multiSelect) selectedSeats = new Set(selected?.kind === 'seat' ? [selected.id] : []);
+    else { const id = [...selectedSeats].at(-1); selectedSeats.clear(); selected = id ? { kind: 'seat', id } : null; }
+    renderPlan();
+  };
+  $('select-all-tables').onclick = () => { selectedSeats = new Set(project.seats.map(t => t.id)); selected = project.seats.length ? { kind: 'seat', id: project.seats[0].id } : null; renderPlan(); };
+  $('clear-selection').onclick = () => { clearSelection(); renderPlan(); };
+  for (const dimension of ['width', 'height']) {
+    $('room-' + dimension).oninput = syncRoomDialog;
+    const input = $('plan-room-' + dimension);
+    input.oninput = () => safe(previewRoomResize); input.onchange = finishRoomResize;
+    input.onpointercancel = cancelRoomResize;
+  }
   document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => { if (busy) return; view = b.dataset.view; render(); });
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => $(b.dataset.close).close());
   $('new-project').onclick = $('start-new').onclick = async () => { if (await switchAllowed()) showRoomDialog(true); };
@@ -650,17 +778,17 @@ class ProjectWriter {
   $('add-tables').onclick = () => commit(p => Model.addSeats(p, +$('table-count').value));
   $('empty-add').onclick = () => { mode = 'layout'; renderPlan(); $('table-count').focus(); };
   for (const kind of ['desk', 'board']) $(kind + '-tool').onclick = () => {
-    selected = { kind, id: kind };
+    selectedSeats.clear(); selected = { kind, id: kind };
     if (!project.room[kind].enabled) commit(p => p.room[kind].enabled = true); else renderPlan();
   };
   $('detect-links').onclick = () => { linkStart = null; commit(p => { Model.detectNeighbours(p); p.neighbourMode = 'auto'; }, 'Nachbarn anhand von Abstand und Blickrichtung erkannt. Prüfe die gestrichelten Verbindungen und korrigiere sie bei Bedarf durch Anklicken.'); };
   $('remember-layout').onclick = () => commit(p => Model.remember(p), 'Diese Anordnung ist jetzt der Standard.');
   $('reset-layout').onclick = () => { if (confirm('Die gespeicherte Standardanordnung wiederherstellen? Wünsche und Regeln bleiben erhalten.')) commit(p => Object.assign(p, ProjectFile.restore(p))); };
   function travel(from, to) {
-    if (!from.length || busy) return; const next = from.pop(); to.push(clone(project)); next.counters = { student: Math.max(next.counters.student, idFloor.student), seat: Math.max(next.counters.seat, idFloor.seat) }; project = ProjectFile.normalize(next); selected = null; revision++; solverMessage = ''; scheduleSave(); render();
+    if (!from.length || busy) return; const next = from.pop(); to.push(clone(project)); next.counters = { student: Math.max(next.counters.student, idFloor.student), seat: Math.max(next.counters.seat, idFloor.seat) }; project = ProjectFile.normalize(next); clearSelection(); roomResizePreview = null; revision++; solverMessage = ''; scheduleSave(); render();
   }
   $('undo').onclick = () => travel(history, future); $('redo').onclick = () => travel(future, history);
-  $('print-plan').onclick = () => { selected = null; renderPlan(); window.print(); };
+  $('print-plan').onclick = () => { clearSelection(); renderPlan(); window.print(); };
   $('recover').onclick = () => safe(() => { const draft = ProjectFile.normalize(cache.project); adopt(draft, null, '', true); notice('Browserentwurf wiederhergestellt. Speichere ihn als Projektdatei.'); });
   $('home').onclick = async event => { event.preventDefault(); if (await switchAllowed()) { project = null; writer.connect(null); fileHandle = null; autosave = false; render(); } };
 
@@ -725,7 +853,7 @@ class ProjectWriter {
   $('save-project').onclick = () => saveProject(); $('save-copy').onclick = () => saveProject(true);
   window.addEventListener('beforeunload', event => { if (dirty() || writer.running) { event.preventDefault(); event.returnValue = ''; } });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') { selected = null; linkStart = null; if (project && view === 'plan') renderPlan(); }
+    if (event.key === 'Escape') { cancelRoomResize(); clearSelection(); linkStart = null; if (project && view === 'plan') renderPlan(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && project) { event.preventDefault(); saveProject(); }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z' && !event.target.matches('input,textarea,select') && project) { event.preventDefault(); event.shiftKey ? travel(future, history) : travel(history, future); }
   });

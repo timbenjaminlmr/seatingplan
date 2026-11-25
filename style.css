@@ -1,12 +1,15 @@
 :root {
     font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    color: #21382f;
-    background: #f5f7f4;
+    color: #223746;
+    background: #f4f7fa;
     font-synthesis: none;
     font-size: 16px;
-    --green: #1e4c6d;
-    --line: #dbe2dc;
-    --muted: #65786d
+    --accent: #1e4c6d;
+    --accent-hover: #163c58;
+    --accent-soft: #e9f1f7;
+    --accent-selected: #deebf5;
+    --line: #d8e2ea;
+    --muted: #647787
 }
 
 * {
@@ -33,11 +36,11 @@ button {
     cursor: pointer;
     font-size: 14px;
     font-weight: 550;
-    transition: background .15s, box-shadow .15s
+    transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s
 }
 
-button:hover {
-    background: #edf2ee
+button:hover:not(:disabled) {
+    background: #e9f1f7
 }
 
 button:active {
@@ -51,13 +54,13 @@ button:disabled {
 }
 
 .primary {
-    background: var(--green);
+    background: var(--accent);
     color: #fff;
-    border-color: var(--green)
+    border-color: var(--accent)
 }
 
-.primary:hover {
-    background: #184b3a
+.primary:hover:not(:disabled) {
+    background: #163c58
 }
 
 button:focus-visible,
@@ -65,14 +68,14 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-    outline: 3px solid #82b6a1;
+    outline: 3px solid #83b2d4;
     outline-offset: 3px
 }
 
 input,
 select,
 textarea {
-    border: 1px solid #ccd6ce;
+    border: 1px solid #cbd8e2;
     border-radius: 7px;
     padding: 9px 10px;
     background: #fff;
@@ -94,7 +97,7 @@ label {
 }
 
 input[type=checkbox] {
-    accent-color: var(--green);
+    accent-color: var(--accent);
     width: 17px;
     height: 17px;
     flex: none
@@ -146,7 +149,7 @@ p {
     font-size: 22px;
     font-weight: 700;
     letter-spacing: -.8px;
-    color: var(--green);
+    color: var(--accent);
     text-decoration: none;
     display: flex;
     align-items: center;
@@ -235,13 +238,13 @@ main {
 
 .welcome-mark i {
     height: 19px;
-    border: 1px solid #8ea99a;
+    border: 1px solid #97afc0;
     border-radius: 4px;
-    background: #e3eee4
+    background: #e5eff6
 }
 
 .welcome-mark i:nth-child(2) {
-    background: var(--green)
+    background: var(--accent)
 }
 
 .tabs {
@@ -262,8 +265,8 @@ main {
 }
 
 .tabs button.active {
-    color: var(--green);
-    border-color: var(--green)
+    color: var(--accent);
+    border-color: var(--accent)
 }
 
 .plan-toolbar,
@@ -286,7 +289,7 @@ main {
     border: 1px solid var(--line);
     padding: 4px;
     border-radius: 11px;
-    background: #eaf0ea
+    background: #eaf0f5
 }
 
 .segmented button {
@@ -296,8 +299,8 @@ main {
 
 .segmented button.active {
     background: #fff;
-    border-color: #d7e1d9;
-    box-shadow: 0 1px 3px #21382f0c
+    border-color: #d5e1ea;
+    box-shadow: 0 1px 3px #2237460c
 }
 
 .tools {
@@ -346,7 +349,7 @@ main {
 
 .room-scroll {
     overflow: auto;
-    border: 1px solid #cfd9d1;
+    border: 1px solid #cedbe5;
     border-radius: 13px;
     background: #fff
 }
@@ -358,7 +361,7 @@ main {
     aspect-ratio: 1000/780;
     background: #fff;
     overflow: hidden;
-    background-image: radial-gradient(#dfe6e0 .7px, transparent .7px);
+    background-image: radial-gradient(#dce5ed .7px, transparent .7px);
     background-size: 20px 20px
 }
 
@@ -371,9 +374,9 @@ main {
 .room .object {
     pointer-events: auto;
     position: absolute;
-    border: 1px solid #bdccc0;
+    border: 1px solid #b9cedc;
     border-radius: 7px;
-    background: #f4f8f1;
+    background: #f1f6fa;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -385,21 +388,21 @@ main {
     cursor: pointer;
     min-height: 0;
     font-size: 14px;
-    box-shadow: 0 2px 3px #253e2e06
+    box-shadow: 0 2px 3px #1e4c6d08
 }
 
 .room .object:hover {
-    border-color: #759881;
-    background: #edf5e9
+    border-color: #6e9aba;
+    background: #e4eff7
 }
 
 .room .object.selected {
-    outline: 3px solid #377c60;
+    outline: 3px solid #347da9;
     outline-offset: 2px
 }
 
 .room .object.link-start {
-    outline: 3px solid #377c60;
+    outline: 3px solid #347da9;
     outline-offset: 3px
 }
 
@@ -429,7 +432,7 @@ main {
     justify-content: space-between;
     width: 100%;
     font-size: 14px;
-    color: #687c6b;
+    color: #637c8e;
     line-height: 1
 }
 
@@ -438,15 +441,15 @@ main {
 }
 
 .room .furniture {
-    background: #eceeea;
-    color: #637265;
-    border-color: #ccd5ca
+    background: #edf2f6;
+    color: #5e7688;
+    border-color: #cbd8e2
 }
 
 .room .board {
-    background: #245b49;
+    background: #1e4c6d;
     color: white;
-    border-color: #245b49;
+    border-color: #1e4c6d;
     border-radius: 3px;
     font-size: 14px
 }
@@ -457,7 +460,7 @@ main {
 
 .room .object.dragging {
     cursor: grabbing;
-    box-shadow: 0 8px 24px #21382f25;
+    box-shadow: 0 8px 24px #22374625;
     z-index: 5
 }
 
@@ -487,7 +490,7 @@ main {
 }
 
 #connections line {
-    stroke: #7d9b85;
+    stroke: #7f9db3;
     stroke-width: 2;
     stroke-dasharray: 6 5
 }
@@ -535,10 +538,10 @@ main {
     border: 0;
     background: none;
     padding: 6px 0;
-    color: var(--green)
+    color: var(--accent)
 }
 
-.text-button:hover {
+.text-button:hover:not(:disabled) {
     background: none;
     text-decoration: underline
 }
@@ -581,7 +584,7 @@ main {
 }
 
 .report {
-    background: #edf2ec;
+    background: #eaf1f6;
     border-radius: 9px;
     padding: 14px 18px;
     font-size: 14px;
@@ -620,8 +623,8 @@ main {
 }
 
 .student-list button.active {
-    background: #e5eee5;
-    border-color: #cdddcf
+    background: #deebf5;
+    border-color: #b8d1e3
 }
 
 .student-list small {
@@ -766,11 +769,11 @@ dialog {
     padding: 30px;
     width: min(510px, calc(100vw - 32px));
     color: inherit;
-    box-shadow: 0 24px 80px #102b2830
+    box-shadow: 0 24px 80px #18364e30
 }
 
 dialog::backdrop {
-    background: #102b2866;
+    background: #18364e66;
     backdrop-filter: blur(3px)
 }
 
@@ -795,10 +798,10 @@ dialog input {
     left: 50%;
     transform: translateX(-50%);
     padding: 15px 22px;
-    border: 1px solid #bfd0c3;
+    border: 1px solid #bdcfdd;
     border-radius: 11px;
     background: #fff;
-    box-shadow: 0 6px 28px #203f2922;
+    box-shadow: 0 6px 28px #1e4c6d22;
     max-width: min(780px, 95vw);
     width: max-content;
     white-space: pre-line;
@@ -1011,3 +1014,139 @@ dialog input {
         margin: 12mm
     }
 }
+/* Gemeinsame Zustände und Raumwerkzeuge. */
+.primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover)
+}
+.tabs button:hover:not(:disabled) {
+    color: var(--accent);
+    background: var(--accent-soft)
+}
+.segmented button:hover:not(:disabled),
+.student-list button:hover:not(:disabled) {
+    background: var(--accent-soft);
+    border-color: #c5d8e6
+}
+.student-list button.active,
+#multi-select[aria-pressed="true"] {
+    color: var(--accent);
+    background: var(--accent-selected);
+    border-color: #aac8de
+}
+.student-list button.active:hover:not(:disabled),
+#multi-select[aria-pressed="true"]:hover {
+    background: #d1e3f0
+}
+.room .object.selected:not(.hard):not(.soft):not(.board) {
+    background: var(--accent-selected)
+}
+.room .board:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover)
+}
+.danger:hover:not(:disabled) {
+    background: #fce9e7;
+    border-color: #e6b8b4;
+    color: #9e2d27
+}
+.text-button:hover:not(:disabled) {
+    color: var(--accent-hover);
+    background: transparent
+}
+select {
+    appearance: none;
+    padding-right: 32px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%23647787' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 16px
+}
+.room-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+    margin: 4px 0 16px;
+    max-width: 720px
+}
+.room-controls label,
+.dialog-room-controls label {
+    gap: 0
+}
+.room-controls label > span,
+.dialog-room-controls label > span {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px
+}
+.room-controls output,
+.dialog-room-controls output {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    font-weight: 400
+}
+input[type="range"] {
+    width: 100%;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    accent-color: var(--accent);
+    cursor: pointer
+}
+.room-preview {
+    height: 136px;
+    display: grid;
+    place-items: center;
+    margin: 18px 0 8px;
+    border-radius: 10px;
+    background: #f1f5f9
+}
+#room-outline {
+    width: 144px;
+    height: 112px;
+    border: 2px solid #7fa5c0;
+    border-radius: 5px;
+    background: #e3edf6
+}
+.dialog-room-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px
+}
+.selection-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    margin: 0 0 16px;
+    color: var(--muted);
+    font-size: 14px
+}
+.selection-tools button {
+    min-height: 40px
+}
+.room.multi-select .seat {
+    cursor: pointer
+}
+.room .object.dragging,
+.room.multi-select .seat.dragging {
+    cursor: grabbing
+}
+.inspector .close {
+    min-width: 40px;
+    min-height: 40px;
+    margin: -6px -8px 0 0
+}
+@media(max-width:650px) {
+    .room-controls { gap: 18px }
+    .dialog-room-controls { grid-template-columns: 1fr; gap: 0 }
+}
+@media print {
+    .room-controls, .selection-tools { display: none !important }
+    .room .object.selected { outline: none }
+    .room .object.selected:not(.hard):not(.soft):not(.board) { background: #f1f6fa }
+}
+
+.busy .room-controls, .busy .selection-tools { pointer-events: none; opacity: .65 }

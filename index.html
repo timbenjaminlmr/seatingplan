@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#245b49">
+  <meta name="theme-color" content="#1e4c6d">
   <title>Sitzplan</title>
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
@@ -54,9 +54,22 @@
         <div id="layout-tools" class="tools" hidden>
           <label>Tische <input id="table-count" type="number" min="1" max="60" value="1"></label><button
             id="add-tables">Hinzufügen</button><button id="desk-tool">Pult</button><button
-            id="board-tool">Tafel</button><button id="room-tool">Raum einstellen</button><span
+            id="board-tool">Tafel</button><button id="room-tool">Raum einstellen</button><button
+            id="multi-select" aria-pressed="false">Mehrfachauswahl</button><span
             class="tool-spacer"></span><button id="remember-layout">Als Standard merken</button><button
             id="reset-layout">Standard wiederherstellen</button>
+        </div>
+
+        <div id="room-controls" class="room-controls" hidden>
+          <label for="plan-room-width"><span>Raumbreite <output id="plan-room-width-value" for="plan-room-width">1000</output></span><input
+              id="plan-room-width" type="range" min="600" max="2400" step="1" value="1000"></label>
+          <label for="plan-room-height"><span>Raumhöhe <output id="plan-room-height-value" for="plan-room-height">780</output></span><input
+              id="plan-room-height" type="range" min="400" max="2000" step="1" value="780"></label>
+        </div>
+        <div id="selection-tools" class="selection-tools" hidden>
+          <span id="selection-count" role="status">Tische anklicken, um sie auszuwählen.</span>
+          <button id="select-all-tables" class="text-button">Alle Tische</button>
+          <button id="clear-selection" class="text-button">Auswahl aufheben</button>
         </div>
 
         <div id="link-tools" class="tools" hidden><span id="link-hint">Zwei Tische anklicken, um eine Verbindung
@@ -123,9 +136,13 @@
     <form id="room-form">
       <h2 id="room-dialog-title">Neues Arrangement</h2><label>Projektname<input id="room-name" maxlength="80" required
           value="Meine Klasse"></label>
-      <div class="two-columns"><label>Raumbreite<input id="room-width" type="number" min="600" max="2400" value="1000"
-            required></label><label>Raumhöhe<input id="room-height" type="number" min="400" max="2000" value="780"
-            required></label></div>
+      <div class="room-preview" aria-hidden="true"><div id="room-outline"></div></div>
+      <div class="dialog-room-controls">
+        <label for="room-width"><span>Raumbreite <output id="room-width-value" for="room-width">1000</output></span><input
+            id="room-width" type="range" min="600" max="2400" step="1" value="1000"></label>
+        <label for="room-height"><span>Raumhöhe <output id="room-height-value" for="room-height">780</output></span><input
+            id="room-height" type="range" min="400" max="2000" step="1" value="780"></label>
+      </div>
       <p class="hint">Die Maße sind freie Planeinheiten. Tische, Pult und Tafel kannst du danach platzieren.</p><label
         id="round-label" hidden>Wunschzettel-Runde<input id="room-round" maxlength="80"
           pattern="[A-Za-z0-9_-]+"></label>

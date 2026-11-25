@@ -6,7 +6,8 @@ Alle Angaben bleiben zusammen in einer Projektdatei – vom ersten Raumlayout bi
 
 ## Funktionen
 
-- **Raumeditor:** Tische, Pult und Tafel frei platzieren, Tischgrößen und Blickrichtungen ändern sowie hintere Plätze und Platznotizen festlegen.
+- **Raumeditor:** Raumgröße mit Reglern und direkter Vorschau einstellen, Tische, Pult und Tafel frei platzieren sowie Tischgrößen, Blickrichtungen, hintere Plätze und Platznotizen festlegen.
+- **Mehrfachauswahl:** Unter „Raum & Tische“ einschalten und mehrere Tische gemeinsam verschieben, drehen oder als hintere Plätze markieren.
 - **Schülerverwaltung:** Namen anlegen und bearbeiten. Feste IDs sorgen dafür, dass Wünsche auch beim Umbenennen zugeordnet bleiben.
 - **Priorisierte Wünsche:** Pro Person bis zu fünf Ja- und fünf Nein-Wünsche erfassen. Rang 1 hat die höchste Priorität; ein Nein kann als absolute Vorgabe markiert werden.
 - **Gruppenregeln:** Beliebige Gruppen von Personen voneinander trennen oder von hinteren Plätzen ausschließen.
