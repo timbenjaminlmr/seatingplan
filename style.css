@@ -4,7 +4,7 @@
     background: #f5f7f4;
     font-synthesis: none;
     font-size: 16px;
-    --green: #245b49;
+    --green: #1e4c6d;
     --line: #dbe2dc;
     --muted: #65786d
 }
@@ -157,7 +157,7 @@ p {
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: #84ac8a
+    background: #84a1ac
 }
 
 #project-heading {
@@ -241,7 +241,7 @@ main {
 }
 
 .welcome-mark i:nth-child(2) {
-    background: #245b49
+    background: var(--green)
 }
 
 .tabs {
