@@ -515,7 +515,7 @@ const ProjectExport = (() => {
   for (const storage of ['localStorage', 'sessionStorage']) try {
     const value = JSON.parse(window[storage].getItem(cacheKey) || 'null');
     if (value?.project) { ProjectFile.normalize(value.project); cached.push(value); }
-  } catch {}
+  } catch { }
   cache = cached.sort((a, b) => (b.cachedAt || 0) - (a.cachedAt || 0))[0] || null;
   const student = id => project.students.find(s => s.id === id);
   const seat = id => project.seats.find(s => s.id === id);
@@ -563,7 +563,7 @@ const ProjectExport = (() => {
     if (!project) return;
     cache = { project: clone(project), dirty: dirty(), fileName, cachedAt: Date.now() };
     const text = JSON.stringify(cache); let stored = false;
-    for (const storage of ['localStorage', 'sessionStorage']) try { window[storage].setItem(cacheKey, text); stored = true; } catch {}
+    for (const storage of ['localStorage', 'sessionStorage']) try { window[storage].setItem(cacheKey, text); stored = true; } catch { }
     if (!stored && !cacheProject.warned) { notice('Der Browser kann den Entwurf nicht sichern. Exportiere den Plan oder kopiere den JSON-Inhalt, bevor du die Seite schließt.', true, 12000); cacheProject.warned = true; }
   }
   function renderSave() {
@@ -911,7 +911,7 @@ const ProjectExport = (() => {
     $('export-status').classList.remove('error');
     $('export-status').textContent = 'Der vollständige JSON-Inhalt ist markiert. Falls er nicht automatisch kopiert wird: ⌘C oder Strg+C drücken und als .json-Datei speichern.';
     // Die sichtbare Auswahl bleibt auch dann nutzbar, wenn eine Vorschau die Zwischenablage blockiert.
-    try { await navigator.clipboard.writeText(text); } catch {}
+    try { await navigator.clipboard.writeText(text); } catch { }
   };
   $('verify-export').onclick = () => { $('verify-input').value = ''; $('verify-input').click(); };
   $('verify-input').onchange = async () => {

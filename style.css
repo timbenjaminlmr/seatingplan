@@ -1014,46 +1014,56 @@ dialog input {
         margin: 12mm
     }
 }
+
 /* Gemeinsame Zustände und Raumwerkzeuge. */
 .primary:hover:not(:disabled) {
     background: var(--accent-hover);
     border-color: var(--accent-hover)
 }
+
 .tabs button:hover:not(:disabled) {
     color: var(--accent);
     background: var(--accent-soft)
 }
+
 .segmented button:hover:not(:disabled),
 .student-list button:hover:not(:disabled) {
     background: var(--accent-soft);
     border-color: #c5d8e6
 }
+
 .student-list button.active,
 #multi-select[aria-pressed="true"] {
     color: var(--accent);
     background: var(--accent-selected);
     border-color: #aac8de
 }
+
 .student-list button.active:hover:not(:disabled),
 #multi-select[aria-pressed="true"]:hover {
     background: #d1e3f0
 }
+
 .room .object.selected:not(.hard):not(.soft):not(.board) {
     background: var(--accent-selected)
 }
+
 .room .board:hover:not(:disabled) {
     background: var(--accent-hover);
     border-color: var(--accent-hover)
 }
+
 .danger:hover:not(:disabled) {
     background: #fce9e7;
     border-color: #e6b8b4;
     color: #9e2d27
 }
+
 .text-button:hover:not(:disabled) {
     color: var(--accent-hover);
     background: transparent
 }
+
 select {
     appearance: none;
     padding-right: 32px;
@@ -1062,6 +1072,7 @@ select {
     background-position: right 10px center;
     background-size: 16px
 }
+
 .room-controls {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1069,23 +1080,27 @@ select {
     margin: 4px 0 16px;
     max-width: 720px
 }
+
 .room-controls label,
 .dialog-room-controls label {
     gap: 0
 }
-.room-controls label > span,
-.dialog-room-controls label > span {
+
+.room-controls label>span,
+.dialog-room-controls label>span {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px
 }
+
 .room-controls output,
 .dialog-room-controls output {
     color: var(--muted);
     font-variant-numeric: tabular-nums;
     font-weight: 400
 }
+
 input[type="range"] {
     width: 100%;
     height: 40px;
@@ -1095,6 +1110,7 @@ input[type="range"] {
     accent-color: var(--accent);
     cursor: pointer
 }
+
 .room-preview {
     height: 136px;
     display: grid;
@@ -1103,6 +1119,7 @@ input[type="range"] {
     border-radius: 10px;
     background: #f1f5f9
 }
+
 #room-outline {
     width: 144px;
     height: 112px;
@@ -1110,11 +1127,13 @@ input[type="range"] {
     border-radius: 5px;
     background: #e3edf6
 }
+
 .dialog-room-controls {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 22px
 }
+
 .selection-tools {
     display: flex;
     align-items: center;
@@ -1124,32 +1143,58 @@ input[type="range"] {
     color: var(--muted);
     font-size: 14px
 }
+
 .selection-tools button {
     min-height: 40px
 }
+
 .room.multi-select .seat {
     cursor: pointer
 }
+
 .room .object.dragging,
 .room.multi-select .seat.dragging {
     cursor: grabbing
 }
+
 .inspector .close {
     min-width: 40px;
     min-height: 40px;
     margin: -6px -8px 0 0
 }
+
 @media(max-width:650px) {
-    .room-controls { gap: 18px }
-    .dialog-room-controls { grid-template-columns: 1fr; gap: 0 }
-}
-@media print {
-    .room-controls, .selection-tools { display: none !important }
-    .room .object.selected { outline: none }
-    .room .object.selected:not(.hard):not(.soft):not(.board) { background: #f1f6fa }
+    .room-controls {
+        gap: 18px
+    }
+
+    .dialog-room-controls {
+        grid-template-columns: 1fr;
+        gap: 0
+    }
 }
 
-.busy .room-controls, .busy .selection-tools { pointer-events: none; opacity: .65 }
+@media print {
+
+    .room-controls,
+    .selection-tools {
+        display: none !important
+    }
+
+    .room .object.selected {
+        outline: none
+    }
+
+    .room .object.selected:not(.hard):not(.soft):not(.board) {
+        background: #f1f6fa
+    }
+}
+
+.busy .room-controls,
+.busy .selection-tools {
+    pointer-events: none;
+    opacity: .65
+}
 
 /* Der Export ist ein sichtbarer, unveränderlicher Download und bleibt im selben Projekt. */
 .export-dialog {
@@ -1157,7 +1202,14 @@ input[type="range"] {
     max-height: calc(100dvh - 32px);
     overflow: auto
 }
-.export-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 }
+
+.export-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 20px 0
+}
+
 #export-download {
     display: inline-flex;
     align-items: center;
@@ -1171,11 +1223,39 @@ input[type="range"] {
     cursor: pointer;
     transition: background-color .15s, border-color .15s
 }
-#export-status { min-height: 44px }
-#export-status.error { color: #9e2d27 }
-#export-details summary { color: var(--accent); cursor: pointer; padding: 8px 0; font-size: 14px }
-#export-json { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; margin-top: 8px; tab-size: 2 }
-@media(max-width:650px) { .export-actions > * { width: 100% } }
 
-.align-error { color: #9e2d27 }
-.align-error:empty { display: none }
+#export-status {
+    min-height: 44px
+}
+
+#export-status.error {
+    color: #9e2d27
+}
+
+#export-details summary {
+    color: var(--accent);
+    cursor: pointer;
+    padding: 8px 0;
+    font-size: 14px
+}
+
+#export-json {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 14px;
+    margin-top: 8px;
+    tab-size: 2
+}
+
+@media(max-width:650px) {
+    .export-actions>* {
+        width: 100%
+    }
+}
+
+.align-error {
+    color: #9e2d27
+}
+
+.align-error:empty {
+    display: none
+}
